@@ -1,0 +1,83 @@
+name: "test"
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+  pull_request:
+    paths:
+      - "src-tauri/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          # libvulkan-dev + glslc + spirv-headers let transcribe-cpp-sys build
+          # ggml's Vulkan backend (the Linux `vulkan` feature). Mirrors the apt
+          # set transcribe.cpp's native-ci uses to build -DTRANSCRIBE_VULKAN=ON.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libasound2-dev libssl-dev libgtk-layer-shell-dev \
+            libvulkan-dev glslc spirv-headers
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Run Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+  llm-engine-smoke:
+    # Proves exactly what ships: the pinned llama-server payload boots, loads a
+    # real GGUF, and answers one OpenAI-compatible completion.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-26]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Stage payload for host
+        shell: bash
+        run: |
+          rustup show >/dev/null 2>&1 || true
+          bash scripts/ci/fetch-llama-server.sh "$(rustc -vV | sed -n 's/^host: //p')"
+      - name: Download tiny model (Qwen2.5-0.5B Q4_K_M)
+        shell: bash
+        run: |
+          curl -fsSL --retry 3 -o /tmp/qwen05.gguf \
+            "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+      - name: Boot + health + completion
+        shell: bash
+        run: |
+          ./src-tauri/resources/llama/llama-server -m /tmp/qwen05.gguf \
+            --host 127.0.0.1 --port 18080 --no-webui -ngl 0 >/tmp/llama.log 2>&1 &
+          SERVER_PID=$!
+          for i in $(seq 1 120); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/health || true)
+            [ "$code" = "200" ] && break
+            sleep 1
+          done
+          [ "$code" = "200" ] || { echo "health never ready"; tail -50 /tmp/llama.log; exit 1; }
+          out=$(curl -s http://127.0.0.1:18080/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"q","messages":[{"role":"user","content":"Remove fillers, reply with only the cleaned text: um hello there"}],"max_tokens":40}')
+          echo "$out"
+          echo "$out" | python3 -c "import json,sys; r=json.load(sys.stdin); c=r['choices'][0]['message']['content']; assert c and c.strip(), 'empty completion'"
+          kill $SERVER_PID
+
+  dash-policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun run check:dashes

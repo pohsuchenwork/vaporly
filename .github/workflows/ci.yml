@@ -1,0 +1,37 @@
+name: "Vaporly CI"
+
+# Cross-platform build verification for Vaporly: one runner per
+# supported desktop OS, unsigned (no signing secrets in this repo), with
+# installable artifacts uploaded. Reuses the shared build.yml verbatim.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # unsigned.tauri.conf.json (JSON merge patch): disables updater
+          # artifacts (need TAURI_SIGNING_PRIVATE_KEY) and removes the Azure
+          # signCommand (needs trusted-signing-cli) for secret-less builds.
+          - platform: "macos-26" # Arm mac; macOS 26 for the Apple Intelligence SDK path
+            args: "--target aarch64-apple-darwin --config src-tauri/unsigned.tauri.conf.json"
+            target: "aarch64-apple-darwin"
+          - platform: "ubuntu-24.04"
+            args: "--bundles appimage,deb --config src-tauri/unsigned.tauri.conf.json"
+            target: "x86_64-unknown-linux-gnu"
+          - platform: "windows-latest"
+            args: "--config src-tauri/unsigned.tauri.conf.json"
+            target: "x86_64-pc-windows-msvc"
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      platform: ${{ matrix.platform }}
+      target: ${{ matrix.target }}
+      build-args: ${{ matrix.args }}
+      sign-binaries: false
+      upload-artifacts: true
+      asset-prefix: "vaporly"

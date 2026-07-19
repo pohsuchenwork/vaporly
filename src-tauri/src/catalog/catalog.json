@@ -1,0 +1,39 @@
+{
+  "catalog_version": 1,
+  "generated_at": "2026-07-01T13:30:59+00:00",
+  "models": [
+    {
+      "id": "handy-computer/parakeet-tdt-0.6b-v2-gguf",
+      "slug": "parakeet-tdt-0.6b-v2",
+      "name": "Parakeet TDT 0.6B v2",
+      "architecture": "parakeet",
+      "family": "parakeet",
+      "parameters": "0.6B",
+      "description": "English only. The best model for English speakers",
+      "base_model": "nvidia/parakeet-tdt-0.6b-v2",
+      "license": "cc-by-4.0",
+      "language_count": 1,
+      "languages": [
+        "en"
+      ],
+      "capabilities": {
+        "streaming": false,
+        "translate": false,
+        "lang_detect": false,
+        "timestamps": "token"
+      },
+      "speed_score": 85,
+      "accuracy_score": 89,
+      "files": [
+        {
+          "filename": "parakeet-tdt-0.6b-v2-Q8_0.gguf",
+          "quant": "Q8_0",
+          "size_bytes": 729574912
+        }
+      ],
+      "default_quant": "Q8_0",
+      "recommended": true,
+      "recommended_rank": 1
+    }
+  ]
+}

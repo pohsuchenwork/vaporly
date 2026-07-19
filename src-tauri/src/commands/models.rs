@@ -1,0 +1,72 @@
+use crate::managers::model::{ModelInfo, ModelManager};
+use crate::managers::transcription::TranscriptionManager;
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_available_models(
+    model_manager: State<'_, Arc<ModelManager>>,
+) -> Result<Vec<ModelInfo>, String> {
+    Ok(model_manager.get_available_models())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_model_info(
+    model_manager: State<'_, Arc<ModelManager>>,
+    model_id: String,
+) -> Result<Option<ModelInfo>, String> {
+    Ok(model_manager.get_model_info(&model_id))
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn download_model(
+    app_handle: AppHandle,
+    model_manager: State<'_, Arc<ModelManager>>,
+    model_id: String,
+) -> Result<(), String> {
+    let result = model_manager
+        .download_model(&model_id)
+        .await
+        .map_err(|e| e.to_string());
+
+    if let Err(ref error) = result {
+        let _ = app_handle.emit(
+            "model-download-failed",
+            serde_json::json!({ "model_id": &model_id, "error": error }),
+        );
+    }
+
+    result
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn get_transcription_model_status(
+    transcription_manager: State<'_, Arc<TranscriptionManager>>,
+) -> Result<Option<String>, String> {
+    Ok(transcription_manager.get_current_model())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn is_model_loading(
+    transcription_manager: State<'_, Arc<TranscriptionManager>>,
+) -> Result<bool, String> {
+    // Check if transcription manager has a loaded model
+    let current_model = transcription_manager.get_current_model();
+    Ok(current_model.is_none())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn cancel_download(
+    model_manager: State<'_, Arc<ModelManager>>,
+    model_id: String,
+) -> Result<(), String> {
+    model_manager
+        .cancel_download(&model_id)
+        .map_err(|e| e.to_string())
+}

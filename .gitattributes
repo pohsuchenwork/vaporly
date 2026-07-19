@@ -1,0 +1,2 @@
+*.sh text eol=lf
+.claude/git-hooks/pre-commit text eol=lf

@@ -1,0 +1,48 @@
+Vaporly
+Copyright (c) 2026 Po-Hsu Chen
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
+See LICENSE. Commercial licensing is available from the copyright holder.
+
+Vaporly bundles, links against, or downloads at runtime the third-party
+software listed below. Full license texts and details are in
+THIRD_PARTY_NOTICES.md.
+
+Built on:
+  Handy
+  Copyright (c) 2025 CJ Pais
+  MIT License. https://github.com/cjpais/Handy
+
+Bundled inside the application:
+  llama.cpp, whisper.cpp, and GGML
+  Copyright (c) 2023-2026 The ggml authors
+  MIT License. https://github.com/ggml-org/llama.cpp
+
+  Silero VAD (silero_vad_v4.onnx)
+  MIT License. https://github.com/snakers4/silero-vad
+
+  dolph/dictionary English word list
+  MIT License. https://github.com/dolph/dictionary
+
+  Fonts: Manrope and Sora
+  SIL Open Font License 1.1. Full text in public/fonts/OFL.txt
+
+  Sound themes:
+    marimba and pop, derived from Handy, MIT License.
+    chime, bubble, and breeze, original works of the Vaporly project, AGPL-3.0.
+
+Downloaded from Hugging Face at runtime, at your request:
+  Parakeet TDT 0.6B v2 (speech-to-text model)
+  Copyright (c) NVIDIA
+  CC-BY-4.0, attribution required. https://huggingface.co
+
+  Qwen2.5 (text cleanup models)
+  Copyright (c) Alibaba
+  Apache-2.0. https://huggingface.co
+
+Linux builds only:
+  System GTK3 and gtk-layer-shell are linked dynamically at runtime and
+  provided by your operating system.
+  LGPL-2.1-or-later.
+
+See THIRD_PARTY_NOTICES.md for the complete license texts and the full
+attribution table.
