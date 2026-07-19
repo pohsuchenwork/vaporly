@@ -1,0 +1,46 @@
+/* Bundled, self-hosted OFL variable font. ONE family across the whole UI:
+   Manrope (variable, wght 200..800). The Latin-subset woff2 was fetched from
+   Google Fonts and committed under public/fonts/, so the runtime stays fully
+   offline (CSP font-src 'self' data:, no CDN).
+
+   Manrope is a soft, low-contrast geometric-humanist sans. It carries the whole
+   product: the dense UI at weight 400, and the sparse, large "display" moments
+   (wordmark, onboarding headline) at a light weight, for an airy, vapor feel.
+   There is no separate display family; --font-display resolves to Manrope too,
+   so the type reads as one uniform system.
+
+   Imported by BOTH windows: src/App.css (main) and
+   src/overlay/RecordingOverlay.css (overlay). */
+
+@font-face {
+  font-family: "Manrope";
+  src: url("/fonts/Manrope-Variable.woff2") format("woff2");
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Sora: used ONLY for the brand wordmark (the droplet lockup), a geometric
+   display face with more character than the Manrope UI. Latin-subset woff2,
+   bundled offline like Manrope. */
+@font-face {
+  font-family: "Sora";
+  src: url("/fonts/Sora-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-body:
+    "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-body);
+  --font-wordmark: "Sora", var(--font-body);
+
+  /* Display octave (clamp) for the sparse, large Manrope moments. Nothing in
+     the dense UI lives between these and the 15px-anchored body ladder, which
+     is the dramatic scale contrast the type system wants. */
+  --display-sm: clamp(1.6rem, 1.25rem + 1.6vw, 2rem);
+  --display-md: clamp(2.1rem, 1.5rem + 2.6vw, 2.9rem);
+  --display-lg: clamp(2.8rem, 1.7rem + 5vw, 4.25rem);
+}

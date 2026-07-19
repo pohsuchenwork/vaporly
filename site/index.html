@@ -1,0 +1,863 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vaporly: free, private dictation that runs on your computer</title>
+    <meta
+      name="description"
+      content="Hold a key, speak, and clean text appears wherever you type. Vaporly is the free, open-source dictation app that keeps your voice 100% on your own computer."
+    />
+    <link rel="icon" type="image/png" href="assets/icon.png" />
+    <meta property="og:title" content="Vaporly: speak, it types" />
+    <meta
+      property="og:description"
+      content="Free, private, on-device dictation for Mac, Windows, and Linux."
+    />
+    <meta
+      property="og:url"
+      content="https://pohsuchenwork.github.io/vaporly/"
+    />
+    <link rel="canonical" href="https://pohsuchenwork.github.io/vaporly/" />
+    <style>
+      @font-face {
+        font-family: "Manrope";
+        src: url("fonts/Manrope-Variable.woff2") format("woff2");
+        font-weight: 200 800;
+        font-display: swap;
+      }
+      :root {
+        --bg: #0e0e11;
+        --card: #191920;
+        --card2: #232329;
+        --tint: rgba(255, 157, 184, 0.13);
+        --ink: #f3eff2;
+        --muted: #a7a2ac;
+        --accent: #ff9db8;
+        --deep: #c44c6c;
+        --good: #3dbf6e;
+        --warn-bg: #241d12;
+        --warn-ink: #f2d28a;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #faf6f7;
+          --card: #ffffff;
+          --card2: #f3eef0;
+          --tint: rgba(196, 76, 108, 0.1);
+          --ink: #211c20;
+          --muted: #6b646f;
+          --accent: #c44c6c;
+          --deep: #c44c6c;
+          --good: #2e9e5b;
+          --warn-bg: #fbefd6;
+          --warn-ink: #6b5215;
+        }
+      }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          "Manrope",
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 940px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .ic {
+        display: inline-block;
+        width: 1em;
+        height: 1em;
+        flex: none;
+      }
+      /* ---- hero ---- */
+      .hero {
+        padding: 96px 0 60px;
+        text-align: center;
+      }
+      .hero .icon {
+        width: 96px;
+        height: 96px;
+        border-radius: 24px;
+        display: block;
+        margin: 0 auto;
+      }
+      h1 {
+        font-size: clamp(42px, 7vw, 66px);
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        margin-top: 20px;
+      }
+      .tagline {
+        font-size: clamp(20px, 3.4vw, 28px);
+        font-weight: 700;
+        color: var(--accent);
+        margin-top: 2px;
+      }
+      .sub {
+        color: var(--muted);
+        max-width: 560px;
+        margin: 16px auto 0;
+        font-size: 17px;
+      }
+      .cta {
+        margin-top: 32px;
+      }
+      .cta img {
+        width: 300px;
+        max-width: 100%;
+        height: auto;
+      }
+      .badges {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 20px;
+      }
+      .badges img {
+        height: 32px;
+      }
+      .hint {
+        color: var(--muted);
+        font-size: 13.5px;
+        margin-top: 16px;
+        min-height: 1.2em;
+      }
+      .donate {
+        display: flex;
+        gap: 12px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-top: 24px;
+      }
+      .donate img {
+        width: 300px;
+        max-width: 100%;
+        height: auto;
+      }
+      /* ---- sections ---- */
+      section {
+        padding: 56px 0;
+      }
+      h2 {
+        font-size: clamp(26px, 4vw, 34px);
+        font-weight: 800;
+        letter-spacing: -0.01em;
+        text-align: center;
+      }
+      .lead {
+        color: var(--muted);
+        max-width: 600px;
+        margin: 12px auto 40px;
+        text-align: center;
+      }
+      /* ---- downloads ---- */
+      .grid {
+        display: grid;
+        gap: 14px;
+        margin-top: 40px;
+      }
+      .buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+      }
+      .buttons img {
+        width: 300px;
+        max-width: 100%;
+        height: auto;
+      }
+      .disc {
+        width: 46px;
+        height: 46px;
+        border-radius: 13px;
+        background: var(--tint);
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex: none;
+      }
+      .disc .ic {
+        width: 24px;
+        height: 24px;
+      }
+      .note {
+        font-size: 13px;
+        color: var(--muted);
+        margin-top: 16px;
+        text-align: center;
+      }
+      /* ---- callout ---- */
+      .callout {
+        background: var(--warn-bg);
+        color: var(--warn-ink);
+        border-radius: 16px;
+        padding: 22px 24px;
+        margin-top: 28px;
+        display: flex;
+        gap: 14px;
+      }
+      .callout .ic {
+        width: 24px;
+        height: 24px;
+        flex: none;
+        margin-top: 2px;
+      }
+      .callout b.t {
+        display: block;
+        font-size: 16.5px;
+        margin-bottom: 8px;
+      }
+      .callout ol {
+        padding-left: 20px;
+        margin-top: 6px;
+      }
+      .callout li {
+        margin: 3px 0;
+      }
+      .callout .after {
+        margin-top: 10px;
+      }
+      /* ---- steps ---- */
+      .steps {
+        grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+        counter-reset: step;
+      }
+      .step {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 22px;
+        text-align: center;
+      }
+      .step .n {
+        counter-increment: step;
+        width: 30px;
+        height: 30px;
+        border-radius: 9px;
+        background: var(--deep);
+        color: #fff;
+        font-weight: 800;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 12px;
+      }
+      .step .n::before {
+        content: counter(step);
+      }
+      .step b {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .step p {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      /* ---- features ---- */
+      .features {
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+      .feature {
+        background: var(--card);
+        border-radius: 16px;
+        padding: 22px;
+      }
+      .feature .disc {
+        margin-bottom: 12px;
+      }
+      .feature b {
+        display: block;
+        margin-bottom: 4px;
+      }
+      .feature p {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      /* ---- privacy ---- */
+      .privacy {
+        background: var(--card);
+        border-radius: 20px;
+        padding: 36px;
+      }
+      .privacy h2 {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+      }
+      .privacy h2 .ic {
+        width: 28px;
+        height: 28px;
+        color: var(--accent);
+      }
+      .privacy ul {
+        list-style: none;
+        display: grid;
+        gap: 11px;
+        margin: 18px auto 0;
+        max-width: 620px;
+      }
+      .privacy li {
+        padding-left: 30px;
+        position: relative;
+        color: var(--muted);
+        font-size: 15px;
+      }
+      .privacy li .ic {
+        position: absolute;
+        left: 0;
+        top: 3px;
+        width: 18px;
+        height: 18px;
+        color: var(--accent);
+      }
+      .req {
+        color: var(--muted);
+        font-size: 14.5px;
+        display: grid;
+        gap: 6px;
+        margin: 22px auto 0;
+        max-width: 620px;
+      }
+      .req b {
+        color: var(--ink);
+      }
+      /* ---- footer ---- */
+      footer {
+        padding: 44px 0 64px;
+        color: var(--muted);
+        font-size: 14px;
+        text-align: center;
+      }
+      footer .links {
+        display: flex;
+        gap: 20px;
+        justify-content: center;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+      }
+      footer .fine {
+        font-size: 12.5px;
+        margin-top: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- icon set: Simple Icons (CC0) brand marks, Lucide (ISC) UI icons; inlined, no network -->
+    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+      <symbol id="i-apple" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"
+        />
+      </symbol>
+      <symbol id="i-windows" viewBox="0 0 24 24">
+        <g fill="currentColor">
+          <rect x="3" y="3" width="8" height="8" rx="1.4" />
+          <rect x="13" y="3" width="8" height="8" rx="1.4" />
+          <rect x="3" y="13" width="8" height="8" rx="1.4" />
+          <rect x="13" y="13" width="8" height="8" rx="1.4" />
+        </g>
+      </symbol>
+      <symbol id="i-linux" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.832-.41 1.684-.287 2.489a.424.424 0 00-.11.135c-.26.268-.45.6-.663.839-.199.199-.485.267-.797.4-.313.136-.658.269-.864.68-.09.189-.136.394-.132.602 0 .199.027.4.055.536.058.399.116.728.04.97-.249.68-.28 1.145-.106 1.484.174.334.535.47.94.601.81.2 1.91.135 2.774.6.926.466 1.866.67 2.616.47.526-.116.97-.464 1.208-.946.587-.003 1.23-.269 2.26-.334.699-.058 1.574.267 2.577.2.025.134.063.198.114.333l.003.003c.391.778 1.113 1.132 1.884 1.071.771-.06 1.592-.536 2.257-1.306.631-.765 1.683-1.084 2.378-1.503.348-.199.629-.469.649-.853.023-.4-.2-.811-.714-1.376v-.097l-.003-.003c-.17-.2-.25-.535-.338-.926-.085-.401-.182-.786-.492-1.046h-.003c-.059-.054-.123-.067-.188-.135a.357.357 0 00-.19-.064c.431-1.278.264-2.55-.173-3.694-.533-1.41-1.465-2.638-2.175-3.483-.796-1.005-1.576-1.957-1.56-3.368.026-2.152.236-6.133-3.544-6.139zm.529 3.405h.013c.213 0 .396.062.584.198.19.135.33.332.438.533.105.259.158.459.166.724 0-.02.006-.04.006-.06v.105a.086.086 0 01-.004-.021l-.004-.024a1.807 1.807 0 01-.15.706.953.953 0 01-.213.335.71.71 0 00-.088-.042c-.104-.045-.198-.064-.284-.133a1.312 1.312 0 00-.22-.066c.05-.06.146-.133.183-.198.053-.128.082-.264.088-.402v-.02a1.21 1.21 0 00-.061-.4c-.045-.134-.101-.2-.183-.333-.084-.066-.167-.132-.267-.132h-.016c-.093 0-.176.03-.262.132a.8.8 0 00-.205.334 1.18 1.18 0 00-.09.4v.019c.002.089.008.179.02.267-.193-.067-.438-.135-.607-.202a1.635 1.635 0 01-.018-.2v-.02a1.772 1.772 0 01.15-.768c.082-.22.232-.406.43-.533a.985.985 0 01.594-.2zm-2.962.059h.036c.142 0 .27.048.399.135.146.129.264.288.344.465.09.199.14.4.153.667v.004c.007.134.006.2-.002.266v.08c-.03.007-.056.018-.083.024-.152.055-.274.135-.393.2.012-.09.013-.18.003-.267v-.015c-.012-.133-.04-.2-.082-.333a.613.613 0 00-.166-.267.248.248 0 00-.183-.064h-.021c-.071.006-.13.04-.186.132a.552.552 0 00-.12.27.944.944 0 00-.023.33v.015c.012.135.037.2.08.334.046.134.098.2.166.268.01.009.02.018.034.024-.07.057-.117.07-.176.136a.304.304 0 01-.131.068 2.62 2.62 0 01-.275-.402 1.772 1.772 0 01-.155-.667 1.759 1.759 0 01.08-.668 1.43 1.43 0 01.283-.535c.128-.133.26-.2.418-.2zm1.37 1.706c.332 0 .733.065 1.216.399.293.2.523.269 1.052.468h.003c.255.136.405.266.478.399v-.131a.571.571 0 01.016.47c-.123.31-.516.643-1.063.842v.002c-.268.135-.501.333-.775.465-.276.135-.588.292-1.012.267a1.139 1.139 0 01-.448-.067 3.566 3.566 0 01-.322-.198c-.195-.135-.363-.332-.612-.465v-.005h-.005c-.4-.246-.616-.512-.686-.71-.07-.268-.005-.47.193-.6.224-.135.38-.271.483-.336.104-.074.143-.102.176-.131h.002v-.003c.169-.202.436-.47.839-.601.139-.036.294-.065.466-.065zm2.8 2.142c.358 1.417 1.196 3.475 1.735 4.473.286.534.855 1.659 1.102 3.024.156-.005.33.018.513.064.646-1.671-.546-3.467-1.089-3.966-.22-.2-.232-.335-.123-.335.59.534 1.365 1.572 1.646 2.757.13.535.16 1.104.021 1.67.067.028.135.06.205.067 1.032.534 1.413.938 1.23 1.537v-.043c-.06-.003-.12 0-.18 0h-.016c.151-.467-.182-.825-1.065-1.224-.915-.4-1.646-.336-1.77.465-.008.043-.013.066-.018.135-.068.023-.139.053-.209.064-.43.268-.662.669-.793 1.187-.13.533-.17 1.156-.205 1.869v.003c-.02.334-.17.838-.319 1.35-1.5 1.072-3.58 1.538-5.348.334a2.645 2.645 0 00-.402-.533 1.45 1.45 0 00-.275-.333c.182 0 .338-.03.465-.067a.615.615 0 00.314-.334c.108-.267 0-.697-.345-1.163-.345-.467-.931-.995-1.788-1.521-.63-.4-.986-.87-1.15-1.396-.165-.534-.143-1.085-.015-1.645.245-1.07.873-2.11 1.274-2.763.107-.065.037.135-.408.974-.396.751-1.14 2.497-.122 3.854a8.123 8.123 0 01.647-2.876c.564-1.278 1.743-3.504 1.836-5.268.048.036.217.135.289.202.218.133.38.333.59.465.21.201.477.335.876.335.039.003.075.006.11.006.412 0 .73-.134.997-.268.29-.134.52-.334.74-.4h.005c.467-.135.835-.402 1.044-.7zm2.185 8.958c.037.6.343 1.245.882 1.377.588.134 1.434-.333 1.791-.765l.211-.01c.315-.007.577.01.847.268l.003.003c.208.199.305.53.391.876.085.4.154.78.409 1.066.486.527.645.906.636 1.14l.003-.007v.018l-.003-.012c-.015.262-.185.396-.498.595-.63.401-1.746.712-2.457 1.57-.618.737-1.37 1.14-2.036 1.191-.664.053-1.237-.2-1.574-.898l-.005-.003c-.21-.4-.12-1.025.056-1.69.176-.668.428-1.344.463-1.897.037-.714.076-1.335.195-1.814.12-.465.308-.797.641-.984l.045-.022zm-10.814.049h.01c.053 0 .105.005.157.014.376.055.706.333 1.023.752l.91 1.664.003.003c.243.533.754 1.064 1.189 1.637.434.598.77 1.131.729 1.57v.006c-.057.744-.48 1.148-1.125 1.294-.645.135-1.52.002-2.395-.464-.968-.536-2.118-.469-2.857-.602-.369-.066-.61-.2-.723-.4-.11-.2-.113-.602.123-1.23v-.004l.002-.003c.117-.334.03-.752-.027-1.118-.055-.401-.083-.71.043-.94.16-.334.396-.4.69-.533.294-.135.64-.202.915-.47h.002v-.002c.256-.268.445-.601.668-.838.19-.201.38-.336.663-.336z"
+        />
+      </symbol>
+      <symbol id="i-kofi" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M11.351 2.715c-2.7 0-4.986.025-6.83.26C2.078 3.285 0 5.154 0 8.61c0 3.506.182 6.13 1.585 8.493 1.584 2.701 4.233 4.182 7.662 4.182h.83c4.209 0 6.494-2.234 7.637-4a9.5 9.5 0 0 0 1.091-2.338C21.792 14.688 24 12.22 24 9.208v-.415c0-3.247-2.13-5.507-5.792-5.87-1.558-.156-2.65-.208-6.857-.208m0 1.947c4.208 0 5.09.052 6.571.182 2.624.311 4.13 1.584 4.13 4v.39c0 2.156-1.792 3.844-3.87 3.844h-.935l-.156.649c-.208 1.013-.597 1.818-1.039 2.546-.909 1.428-2.545 3.064-5.922 3.064h-.805c-2.571 0-4.831-.883-6.078-3.195-1.09-2-1.298-4.155-1.298-7.506 0-2.181.857-3.402 3.012-3.714 1.533-.233 3.559-.26 6.39-.26m6.547 2.287c-.416 0-.65.234-.65.546v2.935c0 .311.234.545.65.545 1.324 0 2.051-.754 2.051-2s-.727-2.026-2.052-2.026m-10.39.182c-1.818 0-3.013 1.48-3.013 3.142 0 1.533.858 2.857 1.949 3.897.727.701 1.87 1.429 2.649 1.896a1.47 1.47 0 0 0 1.507 0c.78-.467 1.922-1.195 2.623-1.896 1.117-1.039 1.974-2.364 1.974-3.897 0-1.662-1.247-3.142-3.039-3.142-1.065 0-1.792.545-2.338 1.298-.493-.753-1.246-1.298-2.312-1.298"
+        />
+      </symbol>
+      <symbol id="i-paypal" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M15.607 4.653H8.941L6.645 19.251H1.82L4.862 0h7.995c3.754 0 6.375 2.294 6.473 5.513-.648-.478-2.105-.86-3.722-.86m6.57 5.546c0 3.41-3.01 6.853-6.958 6.853h-2.493L11.595 24H6.74l1.845-11.538h3.592c4.208 0 7.346-3.634 7.153-6.949a5.24 5.24 0 0 1 2.848 4.686M9.653 5.546h6.408c.907 0 1.942.222 2.363.541-.195 2.741-2.655 5.483-6.441 5.483H8.714Z"
+        />
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 24 24">
+        <path
+          fill="currentColor"
+          d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+        />
+      </symbol>
+      <symbol
+        id="i-download"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 15V3" />
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <path d="m7 10 5 5 5-5" />
+      </symbol>
+      <symbol
+        id="i-alert"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"
+        />
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+      </symbol>
+      <symbol
+        id="i-mic"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 19v3" />
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+        <rect x="9" y="2" width="6" height="13" rx="3" />
+      </symbol>
+      <symbol
+        id="i-ear"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M6 8.5a6.5 6.5 0 1 1 13 0c0 6-6 6-6 10a3.5 3.5 0 1 1-7 0" />
+        <path d="M15 8.5a2.5 2.5 0 0 0-5 0v1a2 2 0 1 1 0 4" />
+      </symbol>
+      <symbol
+        id="i-sparkles"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"
+        />
+        <path d="M20 2v4" />
+        <path d="M22 4h-4" />
+        <circle cx="4" cy="20" r="2" />
+      </symbol>
+      <symbol
+        id="i-book"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M12 7v14" />
+        <path
+          d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"
+        />
+      </symbol>
+      <symbol
+        id="i-panels"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <rect width="18" height="18" x="3" y="3" rx="2" />
+        <path d="M3 9h18" />
+        <path d="M9 21V9" />
+      </symbol>
+      <symbol
+        id="i-history"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+        <path d="M3 3v5h5" />
+        <path d="M12 7v5l4 2" />
+      </symbol>
+      <symbol
+        id="i-shield"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path
+          d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
+        />
+        <path d="m9 12 2 2 4-4" />
+      </symbol>
+      <symbol
+        id="i-check"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.4"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+      >
+        <path d="M20 6 9 17l-5-5" />
+      </symbol>
+    </svg>
+
+    <header class="hero">
+      <div class="wrap">
+        <img class="icon" src="assets/icon.png" alt="Vaporly icon" />
+        <h1>Vaporly</h1>
+        <div class="tagline">Speak. It types.</div>
+        <p class="sub">
+          Hold a key, talk, let go: your words appear as clean, polished text in
+          whatever app you are using. Free forever. No account. Your voice never
+          leaves your computer.
+        </p>
+        <p class="cta">
+          <a href="#downloads"
+            ><img src="assets/btn-download.svg" alt="Download Vaporly"
+          /></a>
+        </p>
+        <p class="badges">
+          <img src="assets/badge-opensource.svg" alt="Open source, AGPL-3.0" />
+          <img src="assets/badge-private.svg" alt="Private, on-device" />
+          <img src="assets/badge-platforms.svg" alt="macOS, Windows, Linux" />
+        </p>
+        <p class="hint" id="os-hint"></p>
+        <p class="donate">
+          <a href="https://ko-fi.com/pohsuchenwork"
+            ><img src="assets/btn-kofi.svg" alt="Buy me a coffee on Ko-fi"
+          /></a>
+          <a href="https://paypal.me/pohsuchenwork"
+            ><img src="assets/btn-paypal.svg" alt="Donate with PayPal"
+          /></a>
+        </p>
+      </div>
+    </header>
+
+    <section id="downloads">
+      <div class="wrap">
+        <h2>Download</h2>
+        <p class="lead">
+          Pick your computer. The installer downloads right away.
+        </p>
+        <p class="buttons">
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/releases/latest/download/Vaporly_aarch64.dmg"
+            ><img
+              src="assets/btn-mac-silicon.svg"
+              alt="Download for Mac, Apple Silicon"
+          /></a>
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/releases/latest/download/Vaporly_x64.dmg"
+            ><img src="assets/btn-mac-intel.svg" alt="Download for Mac, Intel"
+          /></a>
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/releases/latest/download/Vaporly_x64-setup.exe"
+            ><img src="assets/btn-windows.svg" alt="Download for Windows"
+          /></a>
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/releases/latest/download/Vaporly_arm64-setup.exe"
+            ><img
+              src="assets/btn-windows-arm.svg"
+              alt="Download for Windows on ARM"
+          /></a>
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/releases/latest/download/Vaporly_amd64.AppImage"
+            ><img src="assets/btn-linux.svg" alt="Download for Linux"
+          /></a>
+        </p>
+
+        <div class="callout">
+          <svg class="ic"><use href="#i-alert" /></svg>
+          <div>
+            <b class="t"
+              >First time on a Mac: it will say it "cannot verify" Vaporly. That
+              is expected, not a virus.</b
+            >
+            <p>
+              Vaporly is free software and is not registered with Apple's paid
+              developer program. The one-time fix:
+            </p>
+            <ol>
+              <li>
+                Double-click Vaporly in Applications, then click
+                <b>Done</b> when the warning appears.
+              </li>
+              <li>
+                Open <b>System Settings</b>, then <b>Privacy and Security</b>.
+              </li>
+              <li>
+                Scroll down and click <b>Open Anyway</b>. Confirm, and you are
+                in.
+              </li>
+            </ol>
+            <p class="after">
+              On Windows, click <b>More info</b>, then <b>Run anyway</b> if
+              SmartScreen appears. Also one time only.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Up and Running in Four Steps</h2>
+        <div class="grid steps">
+          <div class="step">
+            <div class="n"></div>
+            <b>Download and Install</b>
+            <p>
+              Grab the installer above and open it. On a Mac, drag Vaporly into
+              Applications.
+            </p>
+          </div>
+          <div class="step">
+            <div class="n"></div>
+            <b>Open It Once</b>
+            <p>
+              Use the "Open Anyway" steps in the box above if your computer
+              shows a warning.
+            </p>
+          </div>
+          <div class="step">
+            <div class="n"></div>
+            <b>Allow Permissions</b>
+            <p>
+              Microphone so it hears you, Accessibility so it types for you,
+              Input Monitoring so the key works anywhere.
+            </p>
+          </div>
+          <div class="step">
+            <div class="n"></div>
+            <b>Hold Fn and Talk</b>
+            <p>
+              Click into any text box, hold the Fn key, speak, and let go. Clean
+              text appears.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>What It Can Do</h2>
+        <div class="grid features">
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-mic" /></svg></span
+            ><b>Talk Instead of Type</b>
+            <p>
+              Hold a key, speak, release: polished text lands wherever your
+              cursor is, appearing live as you go. Double-tap to keep talking
+              hands-free.
+            </p>
+          </div>
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-ear" /></svg></span
+            ><b>Whisper Mode</b>
+            <p>
+              Dictate quietly and Vaporly still hears you, while louder sounds
+              around you are ignored. Calibrate it to your mic and room.
+            </p>
+          </div>
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-sparkles" /></svg></span
+            ><b>Cleans Up Your Speech</b>
+            <p>
+              Removes "um" and "uh", and fixes mid-sentence changes of mind,
+              like "at eight, no wait, nine".
+            </p>
+          </div>
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-book" /></svg></span
+            ><b>Knows Your Words</b>
+            <p>
+              Teach it names and jargon; say a trigger phrase to paste whole
+              templates.
+            </p>
+          </div>
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-panels" /></svg></span
+            ><b>Fits the App</b>
+            <p>
+              An email is laid out with a greeting, body, and sign-off. Long
+              messages break into clean paragraphs, and code stays literal.
+            </p>
+          </div>
+          <div class="feature">
+            <span class="disc"
+              ><svg class="ic"><use href="#i-history" /></svg></span
+            ><b>History and Learning</b>
+            <p>
+              Every dictation saved locally, searchable and editable, with audio
+              playback. It can learn from your fixes.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="privacy">
+          <h2>
+            <svg class="ic"><use href="#i-shield" /></svg>Nothing You Say Leaves
+            Your Machine
+          </h2>
+          <ul>
+            <li>
+              <svg class="ic"><use href="#i-check" /></svg>Speech recognition
+              and the AI tidy-up run entirely on your computer.
+            </li>
+            <li>
+              <svg class="ic"><use href="#i-check" /></svg>No account, no
+              subscription, no telemetry, no analytics.
+            </li>
+            <li>
+              <svg class="ic"><use href="#i-check" /></svg>The only internet
+              use: checking for updates and the one-time model download.
+            </li>
+            <li>
+              <svg class="ic"><use href="#i-check" /></svg>Updates are
+              cryptographically signed. Password boxes are never typed into.
+            </li>
+            <li>
+              <svg class="ic"><use href="#i-check" /></svg>Open source under
+              AGPL-3.0: anyone can read every line of the code.
+            </li>
+          </ul>
+          <div class="req">
+            <b>Will It Run on My Computer?</b>
+            <span>Mac: macOS 10.15 or newer (Apple Silicon or Intel).</span>
+            <span>Windows: 10 or 11, 64-bit.</span>
+            <span>Linux: modern 64-bit distro with GTK 3 and WebKitGTK.</span>
+            <span
+              >Works on 4 GB of RAM with instant rule-based cleanup; 6 GB and up
+              adds a small on-device AI cleanup model; 14 GB and up uses the
+              best one. About 1 GB of disk to start.</span
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap">
+        <div class="links">
+          <a href="https://github.com/pohsuchenwork/vaporly"
+            ><svg
+              class="ic"
+              style="width: 15px; height: 15px; vertical-align: -2px"
+            >
+              <use href="#i-github" />
+            </svg>
+            GitHub</a
+          >
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/blob/main/docs/USER_GUIDE.md"
+            >User Guide</a
+          >
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/blob/main/docs/PRIVACY.md"
+            >Privacy</a
+          >
+          <a
+            href="https://github.com/pohsuchenwork/vaporly/blob/main/docs/DISCLAIMER.md"
+            >Disclaimer</a
+          >
+          <a href="https://ko-fi.com/pohsuchenwork">Ko-fi</a>
+          <a href="https://paypal.me/pohsuchenwork">PayPal</a>
+        </div>
+        <div>
+          Made with care by one person. Free forever, AGPL-3.0 licensed.
+        </div>
+        <div class="fine">
+          Vaporly is independent and not affiliated with or endorsed by any
+          company named here. Interface icons from Lucide (ISC) and Simple Icons
+          (CC0).
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        var ua = navigator.userAgent;
+        var base =
+          "https://github.com/pohsuchenwork/vaporly/releases/latest/download/";
+        var hint = {
+          win:
+            'On Windows? Get the <a href="' +
+            base +
+            'Vaporly_x64-setup.exe">64-bit</a> or <a href="' +
+            base +
+            'Vaporly_arm64-setup.exe">ARM</a> build below.',
+          mac:
+            'On a Mac? Get <a href="' +
+            base +
+            'Vaporly_aarch64.dmg">Apple Silicon</a> or <a href="' +
+            base +
+            'Vaporly_x64.dmg">Intel</a> below.',
+          linux:
+            'On Linux? Get the <a href="' +
+            base +
+            'Vaporly_amd64.AppImage">AppImage</a> below.',
+        };
+        var key = /Windows/i.test(ua)
+          ? "win"
+          : /Mac/i.test(ua) && !/iPhone|iPad/i.test(ua)
+            ? "mac"
+            : /Linux/i.test(ua) && !/Android/i.test(ua)
+              ? "linux"
+              : null;
+        if (key) document.getElementById("os-hint").innerHTML = hint[key];
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,221 @@
+@import "tailwindcss";
+@import "./styles/fonts.css";
+@import "./styles/theme.css";
+@import "./styles/motion.css";
+
+/* Register the shared tokens (src/styles/theme.css) as Tailwind utilities. Each
+   is a self-alias so the generated utility resolves the live var at use time
+   (required for the theme swap). `inline` is needed for the color self-aliases
+   and is harmless for the radius/shadow scales. */
+@theme inline {
+  /* Legacy compat aliases (keep so ~200 existing utilities still compile and the
+     overlay keeps resolving) */
+  --color-text: var(--color-text);
+  --color-background: var(--color-background);
+  --color-background-ui: var(--color-background-ui);
+  --color-logo-primary: var(--color-logo-primary);
+  --color-logo-stroke: var(--color-logo-stroke);
+  --color-text-stroke: var(--color-text-stroke);
+  --color-mid-gray: var(--color-mid-gray);
+
+  /* Semantic surfaces */
+  --color-surface-page: var(--color-surface-page);
+  --color-surface-panel: var(--color-surface-panel);
+  --color-surface-raised: var(--color-surface-raised);
+  --color-surface-well: var(--color-surface-well);
+  --color-surface-selected: var(--color-surface-selected);
+  --color-surface-scrim: var(--color-surface-scrim);
+
+  /* Semantic ink */
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-subtle: var(--color-ink-subtle);
+  --color-on-accent: var(--color-on-accent);
+  --color-on-selected: var(--color-on-selected);
+
+  /* Accent roles */
+  --color-accent: var(--color-accent);
+  --color-accent-ink: var(--color-accent-ink);
+  --color-accent-tint: var(--color-accent-tint);
+  --color-accent-solid: var(--color-accent-solid);
+  --color-accent-solid-hover: var(--color-accent-solid-hover);
+  --color-accent-solid-active: var(--color-accent-solid-active);
+  --color-focus-ring: var(--color-focus-ring);
+
+  /* Controls */
+  --color-control-secondary: var(--color-control-secondary);
+  --color-control-secondary-hover: var(--color-control-secondary-hover);
+  --color-control-ghost-hover: var(--color-control-ghost-hover);
+
+  /* Divider hairline */
+  --color-hairline: var(--color-hairline);
+
+  /* Status */
+  --color-danger: var(--color-danger);
+  --color-danger-solid: var(--color-danger-solid);
+  --color-danger-tint: var(--color-danger-tint);
+  --color-success: var(--color-success);
+  --color-success-tint: var(--color-success-tint);
+  --color-warning: var(--color-warning);
+  --color-warning-tint: var(--color-warning-tint);
+  --color-info: var(--color-info);
+  --color-info-tint: var(--color-info-tint);
+
+  /* Font families: map Tailwind font-sans/font-serif to the bundled font so the
+     whole UI is Manrope. fonts.css defines --font-body and points --font-display
+     at it too, so font-sans and font-serif resolve to one family. */
+  --font-sans: var(--font-body);
+  --font-serif: var(--font-display);
+
+  /* Radius scale (rounded-well/control/card/overlay/full) */
+  --radius-well: var(--radius-well);
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-overlay: var(--radius-overlay);
+  --radius-full: var(--radius-full);
+
+  /* Shadow family (shadow-1/2/3) */
+  --shadow-1: var(--shadow-1);
+  --shadow-2: var(--shadow-2);
+  --shadow-3: var(--shadow-3);
+}
+
+/* Retarget Tailwind's default transition timing so every existing transition,
+   transition-colors, transition-all and transition-transform utility adopts the
+   house standard curve at 120ms instead of the template default (150ms,
+   cubic-bezier(0.4, 0, 0.2, 1)). One change upgrades all the transition-colors
+   sites at once, with no per-component edits.
+
+   These live in a NON-inline @theme block on purpose: Tailwind's built-in
+   transition utilities read var(--default-transition-*) from :root, and @theme
+   inline suppresses the :root emission (that is exactly why the color
+   self-aliases above must be inline), so an inline override here would silently
+   not take. The values reference the motion.css tokens, resolved at runtime. */
+@theme {
+  --default-transition-duration: var(--dur-1);
+  --default-transition-timing-function: var(--ease-standard);
+}
+
+/* Stop the macOS rubber-band overscroll at the document level. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+:root {
+  /* Typography */
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 400;
+
+  /* Typography settings */
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+
+  --scrollbar-thumb: color-mix(in srgb, var(--color-text), transparent 85%);
+  --scrollbar-thumb-hover: color-mix(
+    in srgb,
+    var(--color-text),
+    transparent 70%
+  );
+
+  /* Log console surface, a subtle shade off the app background so the live log
+     viewer reads as a distinct console. In light mode this is a faint gray code
+     block (matching other surfaces); the dark theme overrides it below. */
+  --color-log-surface: color-mix(in srgb, var(--color-background), black 6%);
+
+  /* Apply colors */
+  color: var(--color-text);
+  background-color: var(--color-background);
+}
+
+.container {
+  margin: 0;
+  padding-top: 10vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Just a bit darker than the (already dark) background, keeping its warm tint */
+    --color-log-surface: color-mix(in srgb, var(--color-background), black 15%);
+  }
+}
+
+/* macOS - tint native overlay scrollbar thumb */
+:root[data-platform="macos"] {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* Custom Scrollbar - only on Windows/Linux; macOS uses native overlay scrollbars */
+:root:not([data-platform="macos"]) ::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+
+:root:not([data-platform="macos"]) ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:root:not([data-platform="macos"]) ::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 20px;
+  border: 3px solid transparent;
+  border-right-width: 4px;
+  border-left-width: 3px;
+  background-clip: content-box;
+  min-height: 32px;
+}
+
+:root:not([data-platform="macos"]) ::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+@layer utilities {
+  .text-stroke {
+    -webkit-text-stroke: 2px var(--color-text-stroke);
+  }
+}
+
+.logo-primary {
+  fill: var(--color-logo-primary);
+}
+
+.logo-stroke {
+  fill: var(--color-logo-stroke);
+  stroke: var(--color-logo-stroke);
+  stroke-width: 1;
+}
+
+/* One canonical focus recipe: no ring on mouse focus, a 2px accent ring with a
+   2px offset on keyboard focus. Applied via the .focus-ring class on controls. */
+@layer components {
+  .focus-ring:focus {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 2px;
+    border-radius: inherit;
+  }
+}
+
+/* Reduced-motion: collapse durations and per-item iteration app-wide for users
+   who ask the OS to reduce motion. No visual change for everyone else. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

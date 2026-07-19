@@ -1,0 +1,533 @@
+{
+  "sidebar": {
+    "navLabel": "Settings sections",
+    "dictation": "Dictation",
+    "custom": "Custom",
+    "history": "History",
+    "appearance": "Appearance",
+    "general": "About"
+  },
+  "onboarding": {
+    "tagline": "Speak, and it's written.",
+    "permissions": {
+      "title": "Permissions Required",
+      "description": "Vaporly needs a couple of permissions to work properly.",
+      "microphone": {
+        "title": "Microphone Access",
+        "description": "So Vaporly can hear your voice."
+      },
+      "accessibility": {
+        "title": "Accessibility Access",
+        "description": "So Vaporly can type your words into any app."
+      },
+      "grant": "Grant Permission",
+      "granted": "Granted",
+      "waiting": "Waiting...",
+      "allGranted": "All set!",
+      "errors": {
+        "checkFailed": "Failed to check permissions. Please try again.",
+        "requestFailed": "Failed to request permission. Please try again."
+      },
+      "recheck": "Recheck",
+      "continueAnyway": "Continue anyway",
+      "stuckHint": "Granted it but still spinning? macOS sometimes needs the app removed from the list and re-added. You can continue, Vaporly will keep reminding you until it's set."
+    },
+    "sttDownload": {
+      "title": "Setting up your speech model",
+      "description": "Vaporly transcribes entirely on this computer. One quick download and your voice never leaves the machine.",
+      "downloading": "Downloading... {{percent}}%",
+      "preparing": "Unpacking and verifying...",
+      "checking": "Checking your model...",
+      "cancel": "Cancel download",
+      "failed": "The download didn't finish. Check your connection and try again.",
+      "retry": "Retry download"
+    },
+    "cleanupDownload": {
+      "title": "Setting up your cleanup model",
+      "description": "Vaporly polishes what you say with a small language model that also runs entirely on this computer. One more download and everything stays local.",
+      "downloading": "Downloading... {{percent}}%",
+      "checking": "Checking your model...",
+      "cancel": "Cancel download",
+      "failed": "The download didn't finish. Check your connection and try again, or skip for now and download it later from the Dictation page.",
+      "retry": "Retry download",
+      "skip": "Skip for now"
+    },
+    "tryIt": {
+      "title": "Try your voice",
+      "subtitleHold": "Click the box below, hold",
+      "subtitleSpeak": "and say anything. Release the keys and watch your words appear.",
+      "placeholder": "Your words will appear right here…",
+      "downloading": "Your speech model is still downloading, the hotkey will work the moment it finishes.",
+      "successTitle": "You're flowing!",
+      "successBody": "That's all there is to it, dictate into any app, in any text field.",
+      "continue": "Start flowing",
+      "skip": "Skip for now"
+    }
+  },
+  "settings": {
+    "appearance": {
+      "groups": {
+        "theme": "Theme",
+        "accent": "Accent"
+      },
+      "mode": {
+        "title": "Theme",
+        "description": "Follow your system's light or dark look, or force one. Applies to the settings window and the dictation overlay.",
+        "options": {
+          "system": "System",
+          "light": "Light",
+          "dark": "Dark"
+        }
+      },
+      "accent": {
+        "title": "Accent color",
+        "description": "The color Vaporly speaks in: buttons, toggles, selections, the waveform. Every preset keeps text readable in both themes.",
+        "presets": {
+          "sakura": "Sakura",
+          "rose": "Rose",
+          "amber": "Amber",
+          "green": "Green",
+          "blue": "Blue",
+          "violet": "Violet"
+        }
+      }
+    },
+    "dictation": {
+      "groups": {
+        "hotkey": "Hotkey",
+        "whisper": "Whisper Mode",
+        "overlay": "Overlay",
+        "cleanup": "Cleanup",
+        "engine": "Cleanup engine"
+      },
+      "whisper": {
+        "mode": {
+          "title": "Whisper mode",
+          "description": "Whispers transcribe; louder sound is ignored. Boost and cutoff follow the strength. Applies from your next dictation."
+        },
+        "strength": {
+          "title": "Strength",
+          "description": "Light ignores only loud sounds and boosts gently. Medium ignores a normal talking voice. High expects a true whisper and boosts hardest."
+        },
+        "calibration": {
+          "title": "Mic calibration",
+          "description": "Optional wizard: it measures your room, your normal voice, and your whisper, then tunes whisper mode to this microphone. The room is part of the measurement, so run it again whenever you dictate somewhere new (a different room, mic, or background noise).",
+          "calibrate": "Calibrate",
+          "recalibrate": "Recalibrate",
+          "remove": "Remove",
+          "start": "Start",
+          "close": "Close",
+          "tryAgain": "Try again",
+          "dialogTitle": "Calibrate for your mic",
+          "intro": "Three steps: stay silent, speak normally, then whisper. Each step records until you press the button (it unlocks after 5 seconds).",
+          "calibratedFor": "Calibrated for {{device}} ({{separation}} separation).",
+          "phase": {
+            "ambient": "Stay silent. Measuring the room...",
+            "normal": "Speak in your normal voice: count upward from one and keep going.",
+            "whisper": "Now whisper: keep counting, as quietly as you can.",
+            "saving": "Saving..."
+          },
+          "done": {
+            "good": "Great separation. Your whisper and your normal voice are easy to tell apart on this mic.",
+            "workable": "Workable separation. Whisper mode will work, with occasional misses.",
+            "poor": "Poor separation. This mic barely distinguishes your whisper from your voice, so whisper mode may be unreliable.",
+            "tip": "Tip: recalibrate whenever you move to a new environment. The room is part of the measurement."
+          },
+          "levels": "Measured: room {{ambient}}, voice {{normal}}, whisper {{whisper}}.",
+          "error": "Calibration failed: {{message}}",
+          "continueBtn": "Continue",
+          "finishBtn": "Finish",
+          "cancel": "Cancel",
+          "unlocksIn": "Recording... the button unlocks in {{s}} s.",
+          "pressWhenDone": "Recording... press the button when you are done."
+        },
+        "calibrationHint": "Three steps: stay silent, talk normally, then whisper. Each button unlocks after 5 seconds. Recalibrate whenever you move somewhere new."
+      },
+      "hotkeyHint": "Hold to talk, release to paste. Double-tap to lock hands-free, tap again to finish.",
+      "conflict": {
+        "title": "Shortcut conflict",
+        "description": "{{keys}} is assigned to more than one action ({{actions}}). Only one of them will trigger, give each action its own combination."
+      },
+      "globeNotice": {
+        "title": "Using the Fn (globe) key",
+        "body": "In macOS System Settings, Keyboard, set \"Press globe key to\" to \"Do Nothing\", otherwise dictation taps also open the emoji picker.",
+        "dismiss": "Got it"
+      },
+      "overlay": {
+        "style": {
+          "title": "Style",
+          "options": {
+            "none": "Nothing",
+            "bar": "Bar",
+            "bar_live": "Bar with live transcript",
+            "textbox_raw": "On textbox, raw then polished",
+            "textbox_clean": "On textbox, cleaned sentences",
+            "inline": "On textbox, Inline (underlined live)"
+          },
+          "tooltip": "Nothing: you fly blind.\nBar: a pill shows listening, then working.\nLive transcript: the pill fills with your words.\nRaw then polished: live words, then the polish replaces them.\nCleaned sentences: each sentence arrives already cleaned.\nInline: underlined live words that polish themselves."
+        },
+        "position": {
+          "title": "Position",
+          "description": "Where the overlay sits on screen while you dictate.",
+          "options": {
+            "top": "Top",
+            "bottom": "Bottom"
+          }
+        }
+      },
+      "stage": {
+        "engine": {
+          "label": "Engine",
+          "deterministic": "Deterministic",
+          "model": "Model"
+        },
+        "filler": {
+          "label": "Filler fix up",
+          "description": "Clears out the ums, uhs, and stutters. Light takes only the core hesitations, Medium the full list, High also trims filler phrases and false starts."
+        },
+        "mindChange": {
+          "label": "Mind-change check",
+          "description": "Applies your spoken self-corrections, so \"at eight, no wait, nine\" becomes \"at nine\". Higher levels catch more correction cues."
+        }
+      },
+      "context": {
+        "label": "Context awareness",
+        "description": "Adapts formatting to the app you are dictating into: casual in chat, literal in code editors, full sentences in email and notes. Toggle the app kinds Vaporly should adapt to.",
+        "chips": {
+          "email": "Email",
+          "chat": "Chat",
+          "code": "Code",
+          "browser": "Browser",
+          "notes": "Notes",
+          "general": "General"
+        },
+        "mode": {
+          "label": "Adapt via",
+          "deterministic": "Deterministic",
+          "model": "Model",
+          "both": "Both"
+        }
+      },
+      "engine": {
+        "status": {
+          "title": "Engine status",
+          "description": "Vaporly's built-in cleanup engine (llama.cpp) runs entirely on this machine. It starts automatically whenever a cleanup stage uses the model."
+        },
+        "state": {
+          "ready": "Ready",
+          "spawning": "Starting…",
+          "loading_model": "Loading model…",
+          "installing": "Installing…",
+          "restarting": "Restarting…",
+          "model_missing": "Model not downloaded",
+          "not_installed": "Engine not bundled",
+          "crashed": "Crashed",
+          "disabled": "Off",
+          "stopped": "Stopped"
+        },
+        "repair": "Repair",
+        "test": "Test",
+        "testing": "Testing…",
+        "testOk": "Engine works: \"{{output}}\"",
+        "download": "Download cleanup model ({{size}} GB)",
+        "downloading": "Downloading… {{percent}}%",
+        "downloadFailed": "Couldn't download the model: {{error}}",
+        "skippedWarming": "Cleanup engine is warming up, pasted the raw text.",
+        "skippedDown": "Cleanup engine isn't running, pasted the raw text."
+      }
+    },
+    "general": {
+      "groups": {
+        "microphone": "Microphone",
+        "sounds": "Sounds",
+        "behavior": "Behavior",
+        "about": "Updates and about"
+      },
+      "shortcut": {
+        "title": "Vaporly Shortcuts",
+        "description": "Set the keys that start and stop dictation.",
+        "loading": "Loading shortcuts...",
+        "none": "No shortcuts configured",
+        "notFound": "Shortcut not found",
+        "pressKeys": "Press keys...",
+        "notSet": "None",
+        "bindings": {
+          "transcribe": {
+            "name": "Dictate",
+            "description": "Hold and speak, release to paste. Double-tap to lock hands-free."
+          },
+          "cancel": {
+            "name": "Cancel",
+            "description": "Stops the current dictation and discards it."
+          },
+          "hands_free": {
+            "name": "Hands-free",
+            "description": "Press once to start hands-free dictation, press again to stop. Optional; the double-tap on your dictate key keeps working."
+          },
+          "whisper_toggle": {
+            "name": "Whisper Mode toggle",
+            "description": "Flips Whisper Mode on or off, with a sound as confirmation."
+          }
+        },
+        "errors": {
+          "restore": "Failed to restore original shortcut",
+          "set": "Failed to set shortcut: {{error}}",
+          "reset": "Failed to reset shortcut to original value"
+        }
+      },
+      "behavior": {
+        "autostart": {
+          "label": "Launch on startup",
+          "description": "Automatically start Vaporly when you log in to your computer."
+        },
+        "keepClipboard": {
+          "label": "Keep result on clipboard",
+          "description": "After pasting, the dictated text stays on your clipboard. Off restores whatever was there before."
+        },
+        "trailingSpace": {
+          "label": "Append trailing space",
+          "description": "Add a space after pasted text, handy when dictating mid-sentence."
+        }
+      },
+      "about": {
+        "updateChecks": {
+          "label": "Check for updates",
+          "description": "Automatically check for new versions of Vaporly."
+        },
+        "updateStatus": {
+          "title": "Update status",
+          "description": "Vaporly checks quietly in the background. Click to check right now."
+        },
+        "version": {
+          "title": "Version",
+          "description": "The Vaporly build you are running."
+        },
+        "sourceCode": {
+          "title": "Source code",
+          "description": "View source code and contribute.",
+          "button": "View on GitHub"
+        },
+        "logDirectory": {
+          "title": "Log directory",
+          "description": "Location where log files are stored, useful when reporting a problem."
+        },
+        "danger": {
+          "resetAllTitle": "Reset all settings",
+          "resetAllDescription": "Every option returns to its shipped default: hotkeys, overlay, cleanup dials, everything. Your history, recordings, and downloaded models are NOT touched.",
+          "resetAllButton": "Reset all settings",
+          "resetAllConfirm": "Really reset everything? Click again",
+          "resetAllDone": "All settings are back to defaults.",
+          "resetOnboardingTitle": "Re-run first-time setup",
+          "resetOnboardingDescription": "Shows the welcome walkthrough again the next time Vaporly starts.",
+          "resetOnboardingButton": "Reset onboarding",
+          "resetOnboardingDone": "Setup will run again on the next launch."
+        }
+      }
+    },
+    "sound": {
+      "previewFailed": "Could not play the sound preview.",
+      "preview": "Preview sound theme",
+      "microphone": {
+        "title": "Microphone",
+        "description": "Pick the microphone Vaporly listens through.",
+        "placeholder": "Select microphone...",
+        "loading": "Loading..."
+      },
+      "audioFeedback": {
+        "label": "Audio feedback",
+        "description": "Play a sound when dictation starts and stops."
+      },
+      "theme": {
+        "label": "Sound theme",
+        "description": "Pick the sounds you hear when dictation starts and stops."
+      },
+      "outputDevice": {
+        "title": "Output device",
+        "description": "Choose where feedback sounds play.",
+        "placeholder": "Select output device...",
+        "loading": "Loading..."
+      },
+      "volume": {
+        "title": "Volume",
+        "description": "Adjust the volume of audio feedback sounds"
+      }
+    },
+    "custom": {
+      "groups": {
+        "words": "Custom words",
+        "phrases": "Custom phrases",
+        "autoLearn": "Auto-learn"
+      },
+      "words": {
+        "title": "Custom words",
+        "description": "Add words that get misheard or misspelled. Vaporly nudges similar-sounding words to match your list.",
+        "placeholder": "Add a word",
+        "add": "Add",
+        "manage": "Manage ({{count}})",
+        "manageEmpty": "Add words",
+        "empty": "No custom words yet.",
+        "remove": "Remove {{word}}",
+        "duplicate": "\"{{word}}\" already exists",
+        "level": {
+          "title": "Correction level",
+          "description": "How aggressively similar sounds snap to your words. Off disables the stage, High corrects even loose matches."
+        }
+      },
+      "phrases": {
+        "title": "Custom phrases",
+        "description": "When you say a trigger phrase, Vaporly writes its saved text instead: shortcuts like \"btw\" becoming \"by the way\", or whole templates like \"write my email format\" inserting your saved email. Works in every dictation, with or without cleanup.",
+        "level": {
+          "title": "Correction level",
+          "description": "How loosely a spoken trigger may be misheard and still expand. Off disables phrases, High accepts looser matches. Single-word triggers always match exactly."
+        },
+        "empty": "No custom phrases yet. Add a shortcut or a template.",
+        "sayPlaceholder": "What you say (e.g. btw)",
+        "writePlaceholder": "What it writes (e.g. by the way)",
+        "add": "Add phrase",
+        "manage": "Manage ({{count}})",
+        "manageEmpty": "Add phrases",
+        "delete": "Delete phrase",
+        "confirmDelete": "Click again to delete",
+        "hint": "Triggers match even when slightly misheard. Keep triggers under 8 words. Empty rows are not saved."
+      },
+      "autoLearn": {
+        "title": "Learn new words",
+        "note": "Learned words appear in Custom words above, where you can edit or remove them anytime.",
+        "modes": {
+          "off": {
+            "label": "Off",
+            "description": "Vaporly never adds words on its own."
+          },
+          "history_edits": {
+            "label": "From History edits",
+            "description": "When you correct a word in History, Vaporly learns the corrected spelling."
+          },
+          "repeated_words": {
+            "label": "From repeated unknown words",
+            "description": "Unfamiliar words you dictate several times get added automatically."
+          },
+          "both": {
+            "label": "History edits + repeated words",
+            "description": "Learns from your History corrections and from words you dictate repeatedly."
+          },
+          "watch_post_paste": {
+            "label": "Watch post-paste edits (experimental)",
+            "description": "Briefly watches the text field after pasting and learns from corrections you make there. macOS only, best effort."
+          }
+        }
+      }
+    },
+    "history": {
+      "title": "History",
+      "openFolder": "Open Recordings Folder",
+      "loading": "Loading history...",
+      "empty": "Nothing written yet. Hold your hotkey, say a sentence, and it shows up here, saved only on this Mac.",
+      "copyToClipboard": "Copy transcription to clipboard",
+      "delete": "Delete entry",
+      "deleteError": "Couldn't delete that entry. Please try again.",
+      "retranscribe": "Re-transcribe",
+      "retranscribeError": "Couldn't re-transcribe that. Please try again.",
+      "transcribing": "Transcribing...",
+      "transcriptionFailed": "That one didn't come through. Use the retry icon to try again.",
+      "searchPlaceholder": "Search history…",
+      "noResults": "No matches. Try a different word.",
+      "dictionaryAdded": "“{{word}}” added to your dictionary",
+      "addToDictionary": "Add “{{word}}” to dictionary",
+      "edit": {
+        "edit": "Edit transcription",
+        "save": "Save",
+        "cancel": "Cancel",
+        "failed": "Couldn't save your edit. Please try again."
+      },
+      "storage": {
+        "title": "Storage",
+        "limit": {
+          "title": "History limit",
+          "description": "Maximum number of dictations to keep.",
+          "entries": "entries"
+        },
+        "retention": {
+          "title": "Auto-delete recordings",
+          "description": "Automatically delete old audio recordings to save space. Transcripts stay in History.",
+          "never": "Never",
+          "preserveLimit": "Keep latest {{count}}",
+          "days3": "After 3 days",
+          "weeks2": "After 2 weeks",
+          "months3": "After 3 months",
+          "placeholder": "Select retention period..."
+        }
+      }
+    }
+  },
+  "footer": {
+    "checkingUpdates": "Checking for updates...",
+    "updateAvailableShort": "Update available",
+    "upToDate": "Up to date",
+    "updateCheckingDisabled": "Update Checking Disabled",
+    "downloading": "Downloading... {{progress}}%",
+    "installing": "Installing...",
+    "preparing": "Preparing...",
+    "checkForUpdates": "Check for updates",
+    "portableUpdateTitle": "Manual update required",
+    "portableUpdateMessage": "Portable installs cannot be updated automatically. To update: download the latest NSIS installer from GitHub Releases, install it to the same folder, then copy your Data/ folder (settings, models, recordings) from the old version to the new one.",
+    "portableUpdateButton": "Open GitHub Releases"
+  },
+  "common": {
+    "loading": "Loading...",
+    "delete": "Delete",
+    "close": "Close",
+    "open": "Open",
+    "play": "Play",
+    "pause": "Pause",
+    "copy": "Copy",
+    "clear": "Clear",
+    "reset": "Reset",
+    "moreInfo": "More information",
+    "noOptionsFound": "No options found",
+    "confirmAgain": "Sure? Click again",
+    "downloading": "Downloading...",
+    "downloadingCount": "{{count}} downloading...",
+    "levels": {
+      "off": "Off",
+      "light": "Light",
+      "medium": "Medium",
+      "high": "High"
+    }
+  },
+  "accessibility": {
+    "permissionsDescription": "Vaporly needs accessibility permissions to type your words into any app.",
+    "openSettings": "Open System Settings"
+  },
+  "errors": {
+    "loadDirectory": "Error loading directory: {{error}}",
+    "micPermissionDeniedTitle": "Microphone Access Denied",
+    "micPermissionDenied": {
+      "generic": "Vaporly can't hear you yet. Grant microphone access in your system settings, and your voice stays on this computer.",
+      "windows": "Enable microphone access in Settings → Privacy & security → Microphone (including desktop app access).",
+      "macos": "Grant microphone access in System Settings → Privacy & Security → Microphone.",
+      "linux": "Grant microphone access in your system's sound or privacy settings."
+    },
+    "noInputDeviceTitle": "No Microphone Found",
+    "noInputDevice": "Vaporly can't find a microphone. Plug one in or connect a headset, then try again.",
+    "recordingFailed": "Recording didn't start: {{error}}",
+    "modelLoadFailed": "Failed to load model: {{model}}",
+    "modelLoadFailedUnknown": "unknown model",
+    "pasteFailedTitle": "Nothing Came Through",
+    "pasteFailed": "Those words did not make it. They are on your clipboard, so paste them anywhere.",
+    "transcriptionFailedTitle": "Transcription Failed"
+  },
+  "overlay": {
+    "transcribing": "Transcribing...",
+    "processing": "Processing...",
+    "inserted": "Caught.",
+    "insertFailed": "Couldn't insert",
+    "handsFree": "Hands-free",
+    "handsFreeEnding": "Ending soon",
+    "cancel": "Cancel dictation"
+  },
+  "toasts": {
+    "sttUpgraded": "Upgraded to {{model}}, faster and more accurate for English. Your old model is still installed.",
+    "handsFreeWarning": "Hands-free dictation stops in 1 minute",
+    "wordsLearned": "Added to your custom words: {{words}}"
+  }
+}

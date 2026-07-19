@@ -1,0 +1,82 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Vaporly",
+  "version": "3.0.0",
+  "identifier": "computer.vaporly",
+  "build": {
+    "beforeDevCommand": "bun run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' asset: http://asset.localhost data: blob:; font-src 'self' data:; media-src 'self' asset: http://asset.localhost blob:; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["$APPDATA/recordings/**"],
+          "requireLiteralLeadingDot": false
+        }
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": "all",
+    "resources": ["resources/**/*"],
+    "license": "AGPL-3.0-only",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "files": {},
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.15",
+      "signingIdentity": "-",
+      "entitlements": "Entitlements.plist"
+    },
+    "linux": {
+      "deb": {
+        "depends": ["libgtk-layer-shell0"],
+        "files": {
+          "/usr/lib": "transcribe-libs"
+        }
+      },
+      "rpm": {
+        "compression": {
+          "type": "none"
+        },
+        "files": {
+          "/usr/lib": "transcribe-libs"
+        }
+      },
+      "appimage": {
+        "bundleMediaFramework": true,
+        "files": {
+          "/usr/lib": "transcribe-libs"
+        }
+      }
+    },
+    "windows": {
+      "nsis": {
+        "template": "nsis/installer.nsi"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCNUNDQTM4MDJCREI1NTQKUldSVXRiMENPTXBjYThuR2FkQ0lHQW83czFiT2RWa0creFFkSXFrQTBzQTV3WlJiYVFnSTZJMjMK",
+      "endpoints": [
+        "https://github.com/pohsuchenwork/vaporly/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

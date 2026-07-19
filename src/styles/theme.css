@@ -1,0 +1,282 @@
+/* Vaporly design tokens, three layers.
+
+   LAYER 1, primitives: a raw palette plus scales (space, radius, z). These are
+   theme-agnostic and never change between light and dark.
+   LAYER 2, semantics: the only layer a theme swaps. Surfaces, ink, accent roles,
+   status colors and one shadow family, all built from the primitives. Light lives
+   on :root; dark is applied from an OS media query (for machines with no explicit
+   choice) AND from an explicit [data-theme="dark"] selector, so the app can force
+   a theme regardless of the OS. [data-theme="light"] forces light by simply
+   letting the base :root show through.
+   Compat aliases: the 7 legacy --color-* names (background, background-ui,
+   logo-primary, logo-stroke, text, mid-gray, text-stroke) survive as aliases so
+   the existing Tailwind utilities keep compiling AND the recording overlay (which
+   reads raw --color-* vars, never Tailwind) keeps resolving. applyAccent.ts still
+   paints the accent + stroke live for a flash-free first paint; these values are
+   the belt-and-suspenders fallback. */
+
+/* ============================================================
+   LAYER 1: PRIMITIVES (theme-agnostic)
+   ============================================================ */
+:root {
+  /* Warm neutral ramp (hue 349, sakura-tinted, low chroma) */
+  --neutral-25: #fcf9fa;
+  --neutral-50: #fdf8fa;
+  --neutral-100: #f6eff2;
+  --neutral-200: #ede5e9;
+  --neutral-300: #ddd5d8;
+  --neutral-400: #beb4b8;
+  --neutral-500: #867d81;
+  --neutral-600: #6b6266;
+  --neutral-700: #484043;
+  --neutral-750: #3a3135;
+  --neutral-800: #2f282b;
+  --neutral-850: #241e20;
+  --neutral-900: #1b1518;
+  --neutral-950: #110c0e;
+  --neutral-975: #282024;
+
+  /* Sakura accent ramp */
+  --sakura-100: #fde5f0;
+  --sakura-200: #fbd0e4;
+  --sakura-300: #f9bfda;
+  --sakura-400: #f8b0d3;
+  --sakura-500: #e57694;
+  --sakura-600: #c44c6c;
+  --sakura-700: #b44261;
+  --sakura-800: #a53856;
+  --sakura-tint-dark: #4f3341;
+  --sakura-sel-dark: #6f3852;
+
+  /* Status ramps */
+  --red-500: #c43f3e;
+  --red-400: #e66e68;
+  --red-tint-l: #ffe0dc;
+  --red-tint-d: #5d2d2a;
+  --green-600: #35824b;
+  --green-400: #76be86;
+  --green-tint-l: #dbf5df;
+  --green-tint-d: #27452d;
+  --amber-600: #b5721e;
+  --amber-400: #e3b667;
+  --amber-tint-l: #ffe9c8;
+  --amber-tint-d: #573c1c;
+  --blue-600: #3578b8;
+  --blue-400: #6da9e7;
+  --blue-tint-l: #dcefff;
+  --blue-tint-d: #28425c;
+
+  /* Space scale (4px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Radius scale (nested step-down: card 12 to control 8 to well 6) */
+  --radius-well: 6px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-overlay: 16px;
+  --radius-full: 9999px;
+
+  /* Z-index scale */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-menu: 1000;
+  --z-scrim: 1100;
+  --z-dialog: 1200;
+  --z-toast: 1300;
+  --z-tooltip: 1400;
+}
+
+/* ============================================================
+   LAYER 2: SEMANTICS, LIGHT (base :root)
+   ============================================================ */
+:root {
+  --color-surface-page: var(--neutral-100); /* #f6eff2 */
+  --color-surface-panel: var(--neutral-50); /* #fdf8fa */
+  --color-surface-raised: #ffffff;
+  --color-surface-well: var(--neutral-200); /* #ede5e9 */
+  --color-surface-selected: var(
+    --sakura-300
+  ); /* #f9bfda; ink-on-selected 10.2 */
+  --color-surface-scrim: rgba(20, 10, 16, 0.42);
+
+  --color-ink: var(--neutral-975); /* #282024 */
+  --color-ink-muted: var(--neutral-600); /* #6b6266, >=4.77 on every surface */
+  --color-ink-subtle: var(
+    --neutral-500
+  ); /* #867d81, >=3.23 sanctioned low-contrast */
+  --color-on-accent: #ffffff; /* on accent-solid: 4.57 */
+  --color-on-selected: var(--color-ink);
+
+  --color-accent: var(
+    --sakura-400
+  ); /* #f8b0d3 bright pink; FILLS/rings/waveform, never under text */
+  --color-accent-ink: var(
+    --sakura-700
+  ); /* #b44261 ~5:1; accent TEXT only (wordmark, links, Landed) */
+  --color-accent-tint: var(--sakura-100); /* #fde5f0 soft wash */
+  --color-accent-solid: var(--sakura-600); /* #c44c6c; white 4.57 */
+  --color-accent-solid-hover: var(--sakura-700); /* #b44261; white 5.39 */
+  --color-accent-solid-active: var(--sakura-800); /* #a53856; white 6.36 */
+  --color-focus-ring: var(
+    --sakura-700
+  ); /* #b44261; >=3.47 vs every surface, incl. the selected pink */
+
+  --color-control-secondary: var(--neutral-200); /* #ede5e9 */
+  --color-control-secondary-hover: var(--neutral-300); /* #ddd5d8 */
+  --color-control-ghost-hover: var(--neutral-200); /* #ede5e9 */
+
+  --color-danger: var(--red-500);
+  --color-danger-solid: var(--red-500);
+  --color-danger-tint: var(--red-tint-l);
+  --color-success: var(--green-600);
+  --color-success-tint: var(--green-tint-l);
+  --color-warning: var(--amber-600);
+  --color-warning-tint: var(--amber-tint-l);
+  --color-info: var(--blue-600);
+  --color-info-tint: var(--blue-tint-l);
+
+  --shadow-1:
+    0 1px 2px rgba(40, 20, 32, 0.05), 0 2px 6px rgba(40, 20, 32, 0.06);
+  --shadow-2:
+    0 4px 10px rgba(40, 20, 32, 0.08), 0 8px 24px rgba(40, 20, 32, 0.08);
+  --shadow-3:
+    0 12px 28px rgba(40, 20, 32, 0.12), 0 24px 56px rgba(40, 20, 32, 0.14);
+
+  /* Hairline: a faint divider line between rows and around floating surfaces. */
+  --color-hairline: color-mix(in srgb, var(--color-ink) 10%, transparent);
+
+  /* Compat aliases so existing utilities + the overlay keep resolving. The four
+     dynamic ones point at semantic vars, so they follow the dark override (they
+     are re-declared in the dark bodies below to be safe and explicit). */
+  --color-background: var(--color-surface-page);
+  --color-background-ui: var(--color-accent-solid);
+  --color-logo-primary: var(--color-accent);
+  --color-text: var(--color-ink);
+  --color-logo-stroke: #b34a6a; /* light fallback; applyAccent.ts repaints live */
+  --color-mid-gray: #808080; /* static, both themes */
+  --color-text-stroke: #f6f6f6; /* static, both themes */
+}
+
+/* ============================================================
+   LAYER 2: SEMANTICS, DARK
+
+   Applied from two selectors that carry the SAME body:
+   - the OS media query, but only for roots with no explicit choice
+     (:root:not([data-theme])), so [data-theme="light"] can force light even on
+     an OS-dark machine;
+   - an explicit :root[data-theme="dark"], so the app can force dark on an
+     OS-light machine.
+   Both selectors are specificity (0,2,0) and beat the base :root (0,1,0).
+   ============================================================ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-surface-page: var(--neutral-850); /* #241e20 */
+    --color-surface-panel: var(--neutral-800); /* #2f282b */
+    --color-surface-raised: var(--neutral-750); /* #3a3135 */
+    --color-surface-well: var(--neutral-900); /* #1b1518 */
+    --color-surface-selected: var(
+      --sakura-sel-dark
+    ); /* #6f3852; on-selected 8.0 */
+    --color-surface-scrim: rgba(0, 0, 0, 0.55);
+
+    --color-ink: var(--neutral-25); /* #fcf9fa */
+    --color-ink-muted: var(--neutral-400); /* #beb4b8, >=5.83 */
+    --color-ink-subtle: var(--neutral-500); /* #867d81 */
+
+    --color-accent: var(--sakura-300); /* #f9bfda */
+    --color-accent-ink: var(--sakura-300); /* #f9bfda ~7.9 on dark surfaces */
+    --color-accent-tint: var(--sakura-tint-dark); /* #4f3341 */
+    --color-accent-solid: var(--sakura-600);
+    --color-accent-solid-hover: var(--sakura-700);
+    --color-accent-solid-active: var(--sakura-800);
+    --color-focus-ring: var(--sakura-300); /* #f9bfda */
+
+    --color-control-secondary: var(--neutral-750);
+    --color-control-secondary-hover: var(--neutral-700);
+    --color-control-ghost-hover: var(--neutral-800);
+
+    --color-danger: var(--red-400);
+    --color-danger-solid: var(--red-500);
+    --color-danger-tint: var(--red-tint-d);
+    --color-success: var(--green-400);
+    --color-success-tint: var(--green-tint-d);
+    --color-warning: var(--amber-400);
+    --color-warning-tint: var(--amber-tint-d);
+    --color-info: var(--blue-400);
+    --color-info-tint: var(--blue-tint-d);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.28);
+    --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.36);
+    --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.5);
+    --color-hairline: color-mix(in srgb, var(--color-ink) 14%, transparent);
+
+    --color-logo-stroke: #ffd6e2; /* dark fallback; applyAccent.ts repaints live */
+
+    /* Re-declared dynamic compat aliases follow the dark surfaces above. */
+    --color-background: var(--color-surface-page);
+    --color-background-ui: var(--color-accent-solid);
+    --color-logo-primary: var(--color-accent);
+    --color-text: var(--color-ink);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-surface-page: var(--neutral-850); /* #241e20 */
+  --color-surface-panel: var(--neutral-800); /* #2f282b */
+  --color-surface-raised: var(--neutral-750); /* #3a3135 */
+  --color-surface-well: var(--neutral-900); /* #1b1518 */
+  --color-surface-selected: var(
+    --sakura-sel-dark
+  ); /* #6f3852; on-selected 8.0 */
+  --color-surface-scrim: rgba(0, 0, 0, 0.55);
+
+  --color-ink: var(--neutral-25); /* #fcf9fa */
+  --color-ink-muted: var(--neutral-400); /* #beb4b8, >=5.83 */
+  --color-ink-subtle: var(--neutral-500); /* #867d81 */
+
+  --color-accent: var(--sakura-300); /* #f9bfda */
+  --color-accent-ink: var(--sakura-300); /* #f9bfda ~7.9 on dark surfaces */
+  --color-accent-tint: var(--sakura-tint-dark); /* #4f3341 */
+  --color-accent-solid: var(--sakura-600);
+  --color-accent-solid-hover: var(--sakura-700);
+  --color-accent-solid-active: var(--sakura-800);
+  --color-focus-ring: var(--sakura-300); /* #f9bfda */
+
+  --color-control-secondary: var(--neutral-750);
+  --color-control-secondary-hover: var(--neutral-700);
+  --color-control-ghost-hover: var(--neutral-800);
+
+  --color-danger: var(--red-400);
+  --color-danger-solid: var(--red-500);
+  --color-danger-tint: var(--red-tint-d);
+  --color-success: var(--green-400);
+  --color-success-tint: var(--green-tint-d);
+  --color-warning: var(--amber-400);
+  --color-warning-tint: var(--amber-tint-d);
+  --color-info: var(--blue-400);
+  --color-info-tint: var(--blue-tint-d);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.28);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.36);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.5);
+
+  --color-logo-stroke: #ffd6e2; /* dark fallback; applyAccent.ts repaints live */
+
+  /* Re-declared dynamic compat aliases follow the dark surfaces above. */
+  --color-background: var(--color-surface-page);
+  --color-background-ui: var(--color-accent-solid);
+  --color-logo-primary: var(--color-accent);
+  --color-text: var(--color-ink);
+}
+
+/* Light needs no [data-theme="light"] block: the base :root already holds light,
+   and neither dark selector matches when data-theme is "light", so the base
+   values show through. */

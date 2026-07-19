@@ -1,0 +1,11 @@
+# cargo-audit policy. Each ignore documents WHY the advisory does not apply;
+# revisit on every dependency refresh (see SECURITY.md).
+[advisories]
+ignore = [
+  # quick-xml DoS advisories (RUSTSEC-2026-0194/0195). Reached only through
+  # plist <- tauri, which parses the app's OWN bundled Info.plist and other
+  # first-party plists, never attacker-supplied XML. Fixed quick-xml (0.41)
+  # requires a tauri release that adopts it; drop these once tauri updates.
+  "RUSTSEC-2026-0194",
+  "RUSTSEC-2026-0195",
+]

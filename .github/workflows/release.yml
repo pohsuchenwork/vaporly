@@ -1,0 +1,215 @@
+name: "Release"
+
+# Builds signed-updater bundles for the primary targets and publishes them,
+# with the auto-update feed (latest.json), to this repository's own Releases
+# using the built-in workflow token (no cross-repo PAT needed). While the repo
+# is private the assets and feed are visible only to the owner; they go live for
+# everyone the moment the repo is made public.
+#
+# macOS code signing is currently ad-hoc (sign-binaries: false): flipping it to
+# true requires the APPLE_CERTIFICATE secrets documented in SETUP.md so TCC
+# permission grants survive updates. Updater artifacts are minisign-signed
+# either way (TAURI_SIGNING_PRIVATE_KEY).
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Which platforms to build and publish"
+        type: choice
+        default: macos
+        options:
+          - macos
+          - all
+          - others
+
+jobs:
+  # Compute the build matrix from the `platforms` input so an alpha can ship
+  # macOS-only (the actively tested target) without the full six-leg matrix,
+  # where one fragile Windows/Linux leg would otherwise block the whole release.
+  # "all" restores every target. "others" builds everything EXCEPT the
+  # aarch64 mac, for adding the remaining platforms to a release whose Apple
+  # Silicon build already exists and must not be rebuilt.
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - id: set
+        shell: bash
+        run: |
+          ARM_MAC='{"platform":"macos-26","args":"--target aarch64-apple-darwin --config src-tauri/release.tauri.conf.json","target":"aarch64-apple-darwin"}'
+          INTEL_MAC='{"platform":"macos-latest","args":"--target x86_64-apple-darwin --config src-tauri/release.tauri.conf.json","target":"x86_64-apple-darwin"}'
+          REST=',{"platform":"windows-latest","args":"--config src-tauri/release.tauri.conf.json","target":"x86_64-pc-windows-msvc"},{"platform":"ubuntu-24.04","args":"--bundles appimage,deb,rpm --config src-tauri/release.tauri.conf.json","target":"x86_64-unknown-linux-gnu"},{"platform":"windows-11-arm","args":"--target aarch64-pc-windows-msvc --config src-tauri/release.tauri.conf.json","target":"aarch64-pc-windows-msvc"},{"platform":"ubuntu-24.04-arm","args":"--bundles appimage,deb,rpm --config src-tauri/release.tauri.conf.json","target":"aarch64-unknown-linux-gnu"}'
+          case "${{ inputs.platforms }}" in
+            all)    echo "matrix={\"include\":[$ARM_MAC,$INTEL_MAC$REST]}" >> "$GITHUB_OUTPUT" ;;
+            others) echo "matrix={\"include\":[$INTEL_MAC$REST]}" >> "$GITHUB_OUTPUT" ;;
+            *)      echo "matrix={\"include\":[$ARM_MAC,$INTEL_MAC]}" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  build:
+    needs: setup
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+    uses: ./.github/workflows/build.yml
+    with:
+      platform: ${{ matrix.platform }}
+      target: ${{ matrix.target }}
+      build-args: ${{ matrix.args }}
+      # Releases ship ad-hoc signed (no code-signing cert). Turning this on
+      # requires a signing identity codesign will actually use: a self-signed
+      # cert must be TRUSTED for code signing (an untrusted one is rejected), or
+      # use an Apple Developer ID (which also enables notarization). The
+      # build.yml signing path (signing-identity input, fail-loud, notarization
+      # when APPLE_ID is set) is wired and dormant until this flips to true.
+      sign-binaries: false
+      sign-updater: true
+      asset-prefix: "vaporly"
+      upload-artifacts: true
+      # Releases always build from scratch, never restore the Rust cache, so a
+      # stale cached native lib can never be linked into a shipped artifact.
+      no-cache: true
+    secrets: inherit
+
+  publish:
+    needs: [setup, build]
+    # Publish whatever succeeded: with fail-fast disabled, a failing secondary
+    # leg (e.g. the Intel mac) must not sink the release. The assemble step below
+    # refuses to publish only if NO signed bundle was produced at all.
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Get version
+        id: get-version
+        shell: bash
+        run: |
+          VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: dist
+
+      - name: Assemble latest.json + flatten assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.get-version.outputs.version }}"
+          mkdir -p out
+          cp scripts/dist/install.sh scripts/dist/install.ps1 out/
+          # Merge, never replace: seed the feed with the release's existing
+          # latest.json so platforms built earlier (e.g. the validated Apple
+          # Silicon build) keep their exact signature and url.
+          gh release download "v$VERSION" --repo ${{ github.repository }} \
+            --pattern latest.json --output existing_latest.json 2>/dev/null || true
+          python3 /dev/stdin "$VERSION" <<'PY'
+          import json, os, sys, datetime, urllib.parse
+          version = sys.argv[1]
+          base = f"https://github.com/${{ github.repository }}/releases/download/v{version}/"
+          # Artifact dirs are named vaporly-<target>[-platform]; map each target
+          # to its updater platform key and pick files INSIDE that dir only.
+          TARGETS = {
+              "aarch64-apple-darwin": ("darwin-aarch64", ".app.tar.gz"),
+              "x86_64-apple-darwin": ("darwin-x86_64", ".app.tar.gz"),
+              "x86_64-pc-windows-msvc": ("windows-x86_64", "-setup.exe"),
+              "aarch64-pc-windows-msvc": ("windows-aarch64", "-setup.exe"),
+              "x86_64-unknown-linux-gnu": ("linux-x86_64", ".AppImage"),
+              "aarch64-unknown-linux-gnu": ("linux-aarch64", ".AppImage"),
+          }
+          platforms = {}
+          if os.path.exists("existing_latest.json"):
+              try:
+                  platforms = json.load(open("existing_latest.json")).get("platforms", {})
+                  print("Merging with existing feed entries:", ", ".join(sorted(platforms)) or "(none)")
+              except Exception as e:
+                  print(f"WARN: could not parse existing latest.json ({e}); starting fresh")
+          added = 0
+          for d in sorted(os.listdir("dist")):
+              full = os.path.join("dist", d)
+              if not os.path.isdir(full):
+                  continue
+              target = next((t for t in TARGETS if t in d), None)
+              if not target:
+                  continue
+              key, suffix = TARGETS[target]
+              bundle = None
+              arch_tag = key.replace("darwin-", "").replace("windows-", "").replace("linux-", "")
+              for root, _, files in os.walk(full):
+                  for f in files:
+                      src = os.path.join(root, f)
+                      if not os.path.isfile(src):
+                          continue
+                      keep = f.endswith((".dmg", ".app.tar.gz", ".app.tar.gz.sig",
+                                         ".exe", ".exe.sig", ".msi",
+                                         ".AppImage", ".AppImage.sig", ".deb", ".rpm"))
+                      if not keep:
+                          continue
+                      # Human installers embed the version in their filename,
+                      # which breaks a stable releases/latest/download/<name>
+                      # link. Strip the version so those links resolve across
+                      # releases (e.g. Vaporly_3.0.0_aarch64.dmg ->
+                      # Vaporly_aarch64.dmg). The updater .app.tar.gz has no
+                      # version in its name and instead needs arch disambiguation
+                      # (both mac arches emit "Vaporly.app.tar.gz").
+                      if f.endswith((".app.tar.gz", ".app.tar.gz.sig")):
+                          out_name = f.replace(".app.tar.gz", f"_{arch_tag}.app.tar.gz")
+                      else:
+                          out_name = f.replace(f"_{version}_", "_").replace(f"_{version}-", "-")
+                      import shutil
+                      shutil.copy2(src, os.path.join("out", out_name))
+                      if out_name.endswith(suffix):
+                          bundle = os.path.join("out", out_name)
+              if not bundle:
+                  print(f"WARN: no {suffix} in {d}; skipping {key}")
+                  continue
+              sig = bundle + ".sig"
+              if not os.path.exists(sig):
+                  print(f"WARN: no signature for {os.path.basename(bundle)}; skipping {key}")
+                  continue
+              platforms[key] = {
+                  "signature": open(sig).read().strip(),
+                  "url": base + urllib.parse.quote(os.path.basename(bundle)),
+              }
+              added += 1
+          if added == 0:
+              sys.exit("ERROR: no new signed bundles were produced; refusing to publish")
+          feed = {
+              "version": version,
+              "notes": f"Vaporly v{version}",
+              "pub_date": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "platforms": platforms,
+          }
+          json.dump(feed, open("out/latest.json", "w"), indent=2)
+          print(json.dumps(feed, indent=2))
+          PY
+
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.get-version.outputs.version }}"
+          TAG="v$VERSION"
+          # Merge into the existing release; never delete it. Assets built by
+          # this run are added (or refreshed) beside whatever is already there.
+          if gh release view "$TAG" --repo ${{ github.repository }} >/dev/null 2>&1; then
+            echo "Release $TAG exists; merging assets into it"
+          else
+            gh release create "$TAG" --repo ${{ github.repository }} \
+              --title "Vaporly $TAG" \
+              --notes "Vaporly $TAG. See docs/CHANGELOG.md for details."
+          fi
+          gh release upload "$TAG" --repo ${{ github.repository }} --clobber out/*
+          echo "Published $TAG with $(ls out | wc -l) assets from this run"

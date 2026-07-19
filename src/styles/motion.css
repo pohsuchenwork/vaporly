@@ -1,0 +1,229 @@
+/* House motion vocabulary, shared by BOTH windows (main + overlay). Pure CSS,
+   no motion library. It promotes the overlay's signature sculpt curve to named
+   easing + duration tokens, defines the shared entrance keyframes/utilities the
+   later redesign beats (overlay hero, onboarding) build on, and names a
+   reduced-motion identity for every one of them.
+
+   Imported by src/App.css (main) and src/overlay/RecordingOverlay.css (overlay).
+   Kept framework-agnostic (no Tailwind directives) so it is safe in the overlay's
+   non-Tailwind bundle too. The app-wide default-transition retarget that upgrades
+   all the transition-colors sites lives in src/App.css @theme, since that needs
+   Tailwind. */
+
+:root {
+  /* Easing tokens. --ease-standard is the overlay's signature sculpt curve,
+     promoted here so the whole app speaks one voice. --ease-emphasized and
+     --ease-spring overshoot for arrival beats; --ease-accelerate exits. */
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-emphasized: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-accelerate: cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.3, 1.3, 0.4, 1);
+
+  /* Duration ladder. 1..3 are the everyday utility beats (120/180/240ms); the
+     hero-* rungs are the large, sparse moments (overlay summon, onboarding
+     reveal). */
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 240ms;
+  --dur-hero-1: 440ms;
+  --dur-hero-2: 640ms;
+  --dur-hero-3: 800ms;
+
+  /* Per-child offset for orchestrated, bounded groups. */
+  --stagger: 48ms;
+}
+
+/* House entrance = a short fade paired with an 8..16px rise. */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes rise-in-hero {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.motion-rise {
+  animation: rise-in var(--dur-3) var(--ease-standard) both;
+}
+.motion-rise-hero {
+  animation: rise-in-hero var(--dur-hero-2) var(--ease-standard) both;
+}
+.motion-fade {
+  animation: fade-in var(--dur-3) var(--ease-standard) both;
+}
+.motion-pop {
+  animation: pop-in var(--dur-2) var(--ease-emphasized) both;
+}
+.motion-pulse {
+  animation: soft-pulse 1.6s var(--ease-standard) infinite;
+}
+
+/* Orchestrated entrance for BOUNDED groups only (onboarding, lab, hero: max
+   about 6 children). Collections (History, Words, options) never animate per
+   item. */
+.motion-stagger > * {
+  animation: rise-in var(--dur-3) var(--ease-standard) both;
+}
+.motion-stagger > *:nth-child(1) {
+  animation-delay: 0ms;
+}
+.motion-stagger > *:nth-child(2) {
+  animation-delay: calc(1 * var(--stagger));
+}
+.motion-stagger > *:nth-child(3) {
+  animation-delay: calc(2 * var(--stagger));
+}
+.motion-stagger > *:nth-child(4) {
+  animation-delay: calc(3 * var(--stagger));
+}
+.motion-stagger > *:nth-child(5) {
+  animation-delay: calc(4 * var(--stagger));
+}
+.motion-stagger > *:nth-child(6) {
+  animation-delay: calc(5 * var(--stagger));
+}
+
+/* Onboarding beats (main window). The first-run reveal (IntroReveal) and the
+   TryIt success peak build on these. The components JS-gate them off under
+   reduced motion, naming a specific static form; the reduced block below is the
+   belt-and-suspenders static fallback. */
+@keyframes intro-wordmark-in {
+  from {
+    opacity: 0;
+    letter-spacing: 0.06em;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    letter-spacing: -0.02em;
+    transform: none;
+  }
+}
+@keyframes underline-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+@keyframes plate-leave {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-24px);
+  }
+}
+/* A sakura disc swells and fades once behind an arrival (the TryIt check).
+   Mirrors the overlay's success bloom so both windows speak one voice. */
+@keyframes accent-bloom {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1);
+  }
+}
+/* One-time wash: a faint accent tint recedes to the resting well tone under a
+   just-filled field (the TryIt textarea holding the user's own words). */
+@keyframes success-wash {
+  from {
+    background-color: var(--color-accent-tint);
+  }
+  to {
+    background-color: var(--color-surface-well);
+  }
+}
+
+.intro-wordmark-anim {
+  animation: intro-wordmark-in var(--dur-hero-2) var(--ease-standard) both;
+}
+.intro-underline {
+  transform-origin: left center;
+  animation: underline-draw 400ms var(--ease-standard) 200ms both;
+}
+.intro-tagline {
+  animation: fade-in var(--dur-3) var(--ease-standard) 480ms both;
+}
+.intro-leaving {
+  animation: plate-leave var(--dur-3) var(--ease-accelerate) both;
+}
+.accent-bloom {
+  animation: accent-bloom var(--dur-hero-2) var(--ease-emphasized) both;
+}
+.success-wash {
+  animation: success-wash var(--dur-hero-2) var(--ease-standard) both;
+}
+
+/* Reduced-motion identity: entrances collapse to an instant fade, the pulse
+   stops, staggers settle together, and the onboarding beats hold their static end
+   state. This is self-contained so the overlay window (whose CSS file has no
+   global reduced-motion block) degrades correctly too. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-rise,
+  .motion-rise-hero,
+  .motion-fade,
+  .motion-pop {
+    animation: fade-in 1ms both;
+  }
+  .motion-pulse {
+    animation: none;
+  }
+  .motion-stagger > * {
+    animation: fade-in 1ms both;
+    animation-delay: 0ms !important;
+  }
+  .intro-wordmark-anim,
+  .intro-underline,
+  .intro-tagline,
+  .intro-leaving,
+  .accent-bloom,
+  .success-wash {
+    animation: none;
+  }
+}

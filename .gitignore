@@ -1,0 +1,57 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+package-lock.json
+
+node_modules
+/dist
+/dist-ssr
+*.local
+*.local.*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# .claude/ tracked for the claude-system kit (runtime flags ignored below)
+
+/target/
+recording_*
+.crush/
+
+# Playwright
+playwright-report/
+test-results/
+blob-report/
+
+.direnv
+.envrc
+
+# Secrets (defense in depth; none are committed today)
+.env
+.env.*
+*.key
+*.pem
+
+# Nix build output
+result
+
+# claude-system
+PERSONAL.md
+.claude/auto-on
+.claude/superauto-on
+.claude/last-commit.txt
+src-tauri/resources/llama/

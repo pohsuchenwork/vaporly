@@ -1,0 +1,624 @@
+@import "../styles/theme.css";
+@import "../styles/fonts.css";
+@import "../styles/motion.css";
+
+:root {
+  --s-font: var(--font-body);
+  /* Near-opaque app surface (theme.css --color-background at 98%). Auto-flips
+     light/dark with --color-background, so no dark-mode override is needed. */
+  --s-surface: color-mix(in srgb, var(--color-background) 98%, transparent);
+  /* Accent = bright sakura; flips automatically via --color-logo-primary
+     (which aliases --color-accent). */
+  --s-accent: var(--color-logo-primary);
+  /* Soft sakura wash: the shared accent for the vapor-drift under committed
+     words, the success vapor-bloom, the recording-dot halo and the cancel
+     hover. Built from --color-accent (bright sakura, which already flips
+     light/dark), so ONE definition serves both themes. Kept opaque enough to
+     read as sakura; the bloom keyframes bake in their own low element opacity
+     on top. */
+  --s-accent-soft: color-mix(in srgb, var(--color-accent) 55%, transparent);
+  /* Neutrals. Hairlines reuse the app's mid-gray at low opacity, same vocabulary
+     as the app's border-mid-gray/* utilities. muted/faint are overlay-specific
+     secondary/tertiary text grays (no theme equivalent). */
+  --s-muted: #6e6e6e;
+  --s-faint: #9a9a9a;
+  --s-border: color-mix(in srgb, var(--color-mid-gray) 22%, transparent);
+  --s-hair: color-mix(in srgb, var(--color-mid-gray) 12%, transparent);
+
+  /* Card geometry, single source of truth for the visible overlay sizes. The
+     native overlay window (overlay.rs) is sized from these: it must be at least
+     the card's max footprint (--ov-work-w for compact, --ov-open-w for Live),
+     since the card is anchored flush to the screen edge in CSS. Keep overlay.rs
+     in sync when these change. */
+  --ov-rest-w: 172px; /* resting compact pill (minimal, recording) -- roomy enough
+                         for the English working label before the grow starts */
+  --ov-pill-w: 184px; /* base width / Live pill before it opens or collapses */
+  --ov-work-w: 216px; /* working pill (transcribing / polishing) -- wide enough to
+                         center longer labels; shared by Live (collapsed) + minimal */
+  --ov-open-w: 392px; /* Live panel, expanded */
+  --ov-base-h: 56px; /* control-row height (.sbase) */
+  --ov-cap-max-h: 64px; /* max height of the scrolling live-text region */
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* --s-accent-soft needs no dark override: it is built from --color-accent,
+       which already flips to the lighter sakura on dark. */
+    --s-muted: #a3a09a;
+    --s-faint: #6f6c66;
+    /* Hairlines flip to the near-white text token for contrast on dark. */
+    --s-border: color-mix(in srgb, var(--color-text) 12%, transparent);
+    --s-hair: color-mix(in srgb, var(--color-text) 8%, transparent);
+  }
+}
+
+/* ============================================================
+   Unified overlay stage, one fixed, transparent container shared by the compact
+   pill and the Live panel (both render the same `.scard` base). The card is
+   anchored flush to the screen-edge side (bottom by default, top when placed up
+   top) and centered horizontally, so the visible card sits exactly
+   OVERLAY_*_OFFSET from the screen edge regardless of window height, only the
+   offsets in overlay.rs move it. Pops scale from that edge, so the card is never
+   drawn past it (matters for the 4px top offset on Windows/Linux).
+   ============================================================ */
+.ov-stage {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  justify-content: center; /* horizontal centering, kept for both forms */
+  align-items: flex-end; /* bottom placement: flush to the bottom edge */
+  font-family: var(--s-font);
+}
+.ov-stage.top {
+  align-items: flex-start; /* top placement: flush to the top edge */
+}
+
+/* Compact pill: fade the whole container in/out (the pill itself never pops or
+   morphs). */
+.ov-fade {
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+.ov-fade.show {
+  opacity: 1;
+}
+
+/* Top placement, Live panel: stack the control pill above the text region so the
+   card grows downward from its top edge (oldest line under the pill, newest at
+   the bottom), mirroring the bottom overlay's upward flow. The compact pill has
+   no flowing text, so this only affects the Live panel. The text region keeps the
+   same fade + scroll-pin; older lines dissolve up under the pill. */
+.ov-stage.top .scard {
+  /* column-reverse stacks the control pill above the text region. */
+  flex-direction: column-reverse;
+  transform-origin: top center;
+}
+.ov-stage.top .stext-cap {
+  /* Mirror of the bottom overlay (top: 12 / bottom: 0): the first line sits flush
+     under the pill and the breathing room moves below the text. The top fade is
+     off at rest, at zero top padding it would dim the resting first line, and
+     switches on (below) only once text overflows. */
+  padding-top: 0;
+  padding-bottom: 12px;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+/* Once live text overflows, fade older lines up under the pill, matching the
+   bottom overlay's top fade. Gated on `.overflowing` so a short resting line
+   (sitting at the very top) is never dimmed. */
+.ov-stage.top .stext-cap.overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+}
+.ov-stage.top .stext-cap p {
+  /* Top-anchor short text just under the pill; on overflow the cap still pins to
+     the bottom (newest visible) and older lines fade off the top, same as bottom. */
+  margin: 0;
+}
+
+/* Shared base card. Flat: theme surface + hairline border, no shadow or blur. */
+.scard {
+  width: var(--ov-pill-w);
+  border-radius: 24px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: none; /* hold our own width; never let the stage flex shrink the card */
+  transform-origin: bottom center;
+  background: var(--s-surface);
+  border: 1px solid var(--s-border);
+  /* Flat: no drop shadow, no backdrop blur/saturate (was a glassy gradient look). */
+  /* Beat 1 (summon): pop-in plays on mount; the pill-to-panel morph
+     (width/radius) is a transition. Retimed to the house hero-1 duration + the
+     standard sculpt curve so the overlay speaks the shared motion vocabulary. */
+  animation: scard-pop var(--dur-hero-1) var(--ease-standard);
+  transition:
+    width var(--dur-hero-1) var(--ease-standard),
+    border-radius var(--dur-hero-1) var(--ease-standard);
+  will-change: transform, width, opacity;
+}
+@keyframes scard-pop {
+  from {
+    opacity: 0;
+    /* Scale from the anchored edge (transform-origin), never translate past it. */
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.scard.leaving {
+  opacity: 0;
+  transform: scale(0.96);
+  transition:
+    opacity 240ms ease,
+    transform 300ms ease;
+}
+.scard.open {
+  width: var(--ov-open-w);
+  border-radius: 16px;
+}
+.scard.working {
+  width: var(--ov-work-w);
+  border-radius: 18px;
+}
+
+/* Compact form: two fixed widths so the recording→working change is an animatable
+   width transition (intrinsic max-content can't be transitioned, and every label
+   is short enough to fit the resting pill, so content-sizing produced no visible
+   grow). The resting pill hugs the waveform; the working pill is roomy enough to
+   center the longest label, the .swork-label ellipsis is only a safety net past it. */
+.scard.compact {
+  animation: none;
+  width: var(--ov-rest-w);
+}
+.scard.compact.cworking {
+  width: var(--ov-work-w);
+}
+
+/* Beat 5 (the success beat): a tiny settle as the words arrive, played inside the existing
+   900ms inserted window (overlay.rs owns that timing; this never gates paste).
+   Placed after .scard.compact so it wins the equal-specificity tie and animates
+   despite .compact's `animation: none`. Compositor-only (transform). */
+.scard.inserted {
+  animation: card-settle var(--dur-3) var(--ease-standard);
+}
+@keyframes card-settle {
+  0% {
+    transform: scale(1);
+  }
+  45% {
+    transform: scale(0.99);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* text region, auto-height open via grid-rows trick; region fades as a whole */
+.stext {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  /* Beat 1: the panel opens first (grid-rows over hero-1), then the ink flows
+     in, the text opacity delayed ~120ms so the surface reads "open, then the
+     words settle" rather than everything arriving at once. */
+  transition:
+    grid-template-rows var(--dur-hero-1) var(--ease-standard),
+    opacity var(--dur-3) var(--ease-standard) 120ms;
+}
+.scard.open .stext {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.stext-clip {
+  overflow: hidden;
+  min-height: 0;
+}
+.stext-cap {
+  max-height: var(--ov-cap-max-h);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  padding-top: 12px;
+  padding-bottom: 0px;
+  padding-left: 14px;
+  padding-right: 14px;
+  font-size: 15px;
+  line-height: 1.35;
+  letter-spacing: -0.003em;
+  color: color-mix(in srgb, var(--color-text) 90%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 18px);
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+/* Hide the scrollbar (WebKit/Chromium), scroll-back is signalled by the fade. */
+.stext-cap::-webkit-scrollbar {
+  display: none;
+}
+.stext-cap p {
+  /* Bottom-anchor the text when it's shorter than the viewport, avoiding the
+     justify-content:flex-end overflow bug that makes the top unscrollable. */
+  margin: auto 0 0;
+}
+/* Beat 2 (the core): committed vs tentative, "mist to clear". Colour is the ONLY
+   difference (no italic, no weight change) so a word never reflows its glyphs
+   when it condenses. Tentative = vapor (faint, still forming); committed =
+   condensed (clear, settled). */
+.stext-cap .tentative {
+  color: color-mix(in srgb, var(--color-ink) 52%, transparent);
+}
+.stext-cap .committed {
+  color: color-mix(in srgb, var(--color-ink) 94%, transparent);
+}
+/* The freshly committed delta condenses once, from faint vapor into clear text
+   (opacity + a small upward drift). Compositor only (transform/opacity), so no
+   glyph reflow on commit. */
+.stext-cap .committed.condensing {
+  position: relative;
+  animation: vapor-condense var(--dur-2) var(--ease-standard) both;
+}
+/* A soft sakura mist blooms under the condensing word, then disperses. */
+.stext-cap .committed.condensing::after {
+  content: "";
+  position: absolute;
+  inset: -4px -6px;
+  border-radius: 8px;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center,
+    var(--s-accent-soft),
+    transparent 72%
+  );
+  animation: vapor-drift var(--dur-3) var(--ease-standard) both;
+}
+@keyframes vapor-condense {
+  from {
+    opacity: 0.4;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes vapor-drift {
+  from {
+    opacity: 0.5;
+    transform: scale(0.7);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+.scaret {
+  display: inline-block;
+  width: 2px;
+  height: 1.02em;
+  translate: 0 3px;
+  margin-left: 1px;
+  background: var(--s-accent);
+  border-radius: 2px;
+  /* Beat 4: a soft breathe instead of a hard step-blink. */
+  animation: caret-breathe 1.1s var(--ease-standard) infinite;
+}
+/* Beat 4: the first time text shows this session the caret catches in from the
+   waveform edge, then settles into its breathe. The horizontal slide uses
+   `transform`, which composes with the caret's vertical `translate` offset (a
+   different property), so the 3px baseline drop is preserved. */
+.scaret.catch {
+  animation:
+    caret-catch 300ms var(--ease-spring) both,
+    caret-breathe 1.1s var(--ease-standard) 300ms infinite;
+}
+@keyframes caret-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes caret-catch {
+  from {
+    transform: translateX(-16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* base row, dot (left) | waveform (center) | timer + cancel (right).
+   Same structure for pill & panel; the dot stays anchored left in both. */
+.sbase {
+  height: var(--ov-base-h);
+  padding: 0 10px;
+  display: grid;
+  /* Equal side columns (min 22px to hold the cancel button) keep the center item, waveform or label, centered whether the pill is at min width or content-
+     sized. */
+  grid-template-columns: minmax(22px, 1fr) auto minmax(22px, 1fr);
+  align-items: center;
+}
+.sbase-l {
+  display: flex;
+  padding-left: 5px;
+  align-items: center;
+  justify-self: start;
+}
+.sbase-r {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-self: end;
+}
+.sdot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--s-accent);
+  flex: none;
+}
+/* Recording pulse: a soft vapor halo breathes outward from the dot. Compositor
+   only (opacity + scale on a pseudo element), replacing a box-shadow ring that
+   repainted every frame. */
+.sdot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--s-accent-soft), transparent 70%);
+  animation: vapor-halo 1.9s var(--ease-standard) infinite;
+}
+.slock {
+  width: 12px;
+  height: 12px;
+  color: var(--s-accent);
+  flex: none;
+}
+.scap-warning {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-warning);
+  background: var(--color-warning-tint);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  border-radius: var(--radius-full);
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+@keyframes vapor-halo {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.7);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(2.6);
+  }
+}
+.stimer {
+  font-size: 12px;
+  color: var(--s-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 240ms ease 80ms;
+}
+.scard.open .stimer {
+  opacity: 1;
+}
+
+/* Waveform, simple reactive bars, themed; heights set inline from mic levels. */
+.swave {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-right: 8px;
+  height: 32px;
+  flex: none;
+  /* Beat 3: the waveform yields to the words. */
+  transition: opacity var(--dur-3) var(--ease-standard);
+}
+/* Beat 3: dim the waveform once the Live panel is open, so the live text leads
+   and the bars recede to a supporting rhythm. */
+.scard.open .swave {
+  opacity: 0.68;
+}
+.swave i {
+  width: 4px;
+  min-height: 3px;
+  max-height: 32px;
+  border-radius: 2px;
+  background: var(--s-accent);
+  transition: height 80ms linear;
+}
+.sx {
+  position: relative; /* anchor the enlarged hit area (::before) below */
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex: none;
+  padding: 0;
+  border: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--s-muted);
+  background: var(--s-hair);
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    transform 100ms ease;
+}
+/* Enlarge the click/tap target to ~34px while the visible circle stays 22px and
+   the glyph stays tiny: a transparent pseudo-element extends the hit area, and a
+   click anywhere on it counts as a click on the button. The overlay is the one
+   constrained place where a full 44px target does not fit the compact pill (the
+   waveform + timer share the row), so a 32-40px target is the sanctioned floor
+   here. The 6px inset stays inside the 10px gap to the timer, so it never steals
+   the timer's space. */
+.sx::before {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+}
+.sx svg {
+  width: 9px;
+  height: 9px;
+  display: block;
+}
+.sx:hover {
+  background: var(--s-accent-soft);
+  color: var(--color-text);
+  transform: scale(1.05);
+}
+.sx:active {
+  transform: scale(0.95);
+}
+
+/* working state (transcribing / polishing), spinner + label */
+.sspinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--s-hair);
+  border-top-color: var(--s-accent);
+  animation: sspin 0.7s linear infinite;
+  flex: none;
+}
+@keyframes sspin {
+  to {
+    transform: rotate(1turn);
+  }
+}
+.swork-label {
+  font-size: 12px;
+  color: var(--s-muted);
+  white-space: nowrap;
+  padding: 0 8px; /* breathing room from the spinner / cancel when content-sized */
+  /* Safety net: ellipsize rather than clip if a label exceeds the max pill width. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Result flash (inserted / error): icon sits in the left zone like the spinner.
+   Success stays on-brand (accent); error uses a muted red that flips for dark. */
+.scheck {
+  width: 14px;
+  height: 14px;
+  color: var(--s-accent);
+}
+/* Beat 5: the check draws itself on rather than hard-popping. The single
+   stroked path is ~13 units long; 22 over-covers it so the whole stroke hides
+   then reveals. */
+.scheck path {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  animation: draw-check var(--dur-3) var(--ease-standard) forwards;
+}
+/* Beat 5: a sakura mist blooms behind the check as the words condense. The icon
+   wrapper is the positioning context; the bloom is centered on the 14px check
+   via inset+auto so its own `transform` is free for the scale keyframe. */
+.sresult-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.sresult-bloom {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--s-accent-soft), transparent 70%);
+  animation: vapor-bloom var(--dur-hero-2) var(--ease-emphasized) both;
+}
+.serr {
+  width: 14px;
+  height: 14px;
+  color: var(--s-error, #c14953);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --s-error: #e0666f;
+  }
+}
+@keyframes draw-check {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes vapor-bloom {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+
+/* Reduced motion: strip every decorative beat to a correct STATIC end state,
+   but keep the spinners (they signal ongoing work). Vapor vs clear is still
+   communicated by colour (tentative 52% / committed 94%); the check reads
+   solid; the caret holds a steady dim; the vapor bloom is one faint frame. */
+@media (prefers-reduced-motion: reduce) {
+  /* Beat 1: no summon pop, no pill-to-panel morph (jump to the end state). */
+  .scard {
+    animation: none;
+    transition: none;
+  }
+  .stext,
+  .swave,
+  .stimer {
+    transition: none;
+  }
+  /* Recording dot: no vapor halo. */
+  .sdot::after {
+    animation: none;
+    display: none;
+  }
+  /* Beat 4: caret holds steady, no breathe, no catch. */
+  .scaret,
+  .scaret.catch {
+    animation: none;
+    opacity: 0.7;
+  }
+  /* Beat 2: committed shows its full clear colour at once; no condense, no mist. */
+  .stext-cap .committed.condensing {
+    animation: none;
+  }
+  .stext-cap .committed.condensing::after {
+    display: none;
+  }
+  /* Beat 5: the check is solid (fully drawn), the card does not settle, and the
+     accent bloom is a single faint static frame. */
+  .scheck path {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+  .scard.inserted {
+    animation: none;
+  }
+  .sresult-bloom {
+    animation: none;
+    opacity: 0.18;
+  }
+}
