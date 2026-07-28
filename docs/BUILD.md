@@ -82,13 +82,35 @@ mkdir -p src-tauri/resources/models
 curl -o src-tauri/resources/models/silero_vad_v4.onnx https://blob.handy.computer/silero_vad_v4.onnx
 ```
 
-### 4. Start Dev Server
+### 4. Stage the Cleanup Engine
+
+The bundled llama.cpp engine that powers AI cleanup is **not** in the
+repository (`src-tauri/resources/llama/` is gitignored), so a fresh clone has
+no engine payload. Stage it for your target before building:
+
+```bash
+scripts/ci/fetch-llama-server.sh aarch64-apple-darwin
+```
+
+Use the Rust target triple for your machine (`x86_64-apple-darwin`,
+`x86_64-pc-windows-msvc`, `x86_64-unknown-linux-gnu`, ...). The script
+downloads the pinned llama.cpp release, verifies its SHA256, and flattens the
+payload into `src-tauri/resources/llama/`.
+
+> [!IMPORTANT]
+> If you skip this step the build still succeeds, but the app ships with no
+> engine and every AI cleanup silently degrades: the log reads
+> `llm-engine: state -> NotInstalled (no engine payload for this platform)`
+> and dictations are transcribed but never cleaned up. Confirm
+> `src-tauri/resources/llama/llama-server` exists before a release build.
+
+### 5. Start Dev Server
 
 ```bash
 CMAKE_POLICY_VERSION_MINIMUM=3.5 bun run tauri dev
 ```
 
-### 5. Build for Production
+### 6. Build for Production
 
 ```bash
 CMAKE_POLICY_VERSION_MINIMUM=3.5 bun run tauri build

@@ -42,16 +42,16 @@ const SIGNOFF_CUES: &[&str] = &[
 ];
 
 /// Discourse shifts that open a new paragraph, longest first.
+/// Round 27 pruned "also", "plus", and "anyway": they are ordinary connectives
+/// in speech, not topic shifts, and because the cue test runs before the
+/// sentence cap they dominated every split decision. Only unmistakable
+/// change-of-subject phrases remain.
 const DISCOURSE_CUES: &[&str] = &[
     "on another note",
     "one more thing",
     "another thing",
     "by the way",
     "separately",
-    "oh and",
-    "anyway",
-    "also",
-    "plus",
     "btw",
 ];
 
@@ -88,6 +88,30 @@ fn join_cue_name(cue: &str, name: &str) -> String {
     }
 }
 
+/// Collective salutations that read as a name after a greeting or sign-off
+/// even though nobody capitalizes them ("Hello team,", "Thanks, everyone").
+const SALUTATION_NOUNS: &[&str] = &["team", "everyone", "all", "folks", "guys", "both"];
+
+/// Whether `name` plausibly addresses a person, so "Hey Sarah," reshapes into
+/// a greeting while ordinary prose does not.
+///
+/// The test is capitalization in the SOURCE text. Without it, any short
+/// comma-delimited opener passed the word-count guard and got mangled: "Hi,
+/// sorry, I missed your message." became a greeting to someone named "sorry",
+/// and "The deploy is done. Thanks, that helped." turned a real sentence into
+/// a signature block. Real names are capitalized; the stray fragments that
+/// caused those failures are not.
+fn looks_like_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    if SALUTATION_NOUNS.contains(&name.to_lowercase().as_str()) {
+        return true;
+    }
+    name.split_whitespace()
+        .all(|w| w.chars().next().is_some_and(char::is_uppercase))
+}
+
 /// Peel a greeting line off the front, returning `(greeting_line, new_body)`.
 /// Handles "Hey Sarah, <body>", "Hey Sarah. <body>", and the STT-comma case
 /// "Hi, Sarah <body>" where the speech model drops a comma right after the
@@ -117,7 +141,7 @@ fn peel_greeting(body: &str) -> Option<(String, String)> {
         // Comma after the name: the body continues on this sentence.
         let name = post[..rel].trim();
         let head = join_cue_name(&cue, name);
-        if head.split_whitespace().count() <= MAX_CUE_HEAD_WORDS {
+        if looks_like_name(name) && head.split_whitespace().count() <= MAX_CUE_HEAD_WORDS {
             let new_body = body[pos + rel + 1..].trim_start().to_string();
             if !new_body.is_empty() {
                 return Some((format!("{head},"), new_body));
@@ -129,7 +153,7 @@ fn peel_greeting(body: &str) -> Option<(String, String)> {
         // the body (if any) is the later sentences.
         let name = post.trim_end_matches(['.', '!', '?']).trim();
         let head = join_cue_name(&cue, name);
-        if head.split_whitespace().count() <= MAX_CUE_HEAD_WORDS {
+        if looks_like_name(name) && head.split_whitespace().count() <= MAX_CUE_HEAD_WORDS {
             let later = body[first_end..].trim_start().to_string();
             return Some((format!("{head},"), later));
         }
@@ -177,16 +201,30 @@ pub fn apply_email_structure(text: &str) -> String {
     // ---- sign-off: peel "Thanks, John." off the end ----
     let (last_start, last) = last_sentence(&body);
     if last_start > 0 {
-        let bare = last.trim_end_matches(['.', '!', '?']).trim();
+        let trimmed_last = last.trim();
+        // A closing "!" or "?" is the speaker's tone, not stray punctuation:
+        // remember it so "Thanks so much!" does not flatten to "Thanks so much".
+        let end_punct = trimmed_last
+            .chars()
+            .last()
+            .filter(|c| matches!(c, '!' | '?'));
+        let bare = trimmed_last.trim_end_matches(['.', '!', '?']).trim();
         if let Some(cue_len) = leading_cue(bare, SIGNOFF_CUES) {
             let after = bare[cue_len..].trim();
-            let phrase = capitalize_first(&bare[..cue_len]);
+            let mut phrase = capitalize_first(&bare[..cue_len]);
             if after.is_empty() {
+                if let Some(p) = end_punct {
+                    phrase.push(p);
+                }
                 signoff = Some(phrase);
                 body = body[..last_start].trim_end().to_string();
             } else if let Some(name) = after.strip_prefix(',') {
                 let name = name.trim();
-                if !name.is_empty() && name.split_whitespace().count() <= MAX_SIGNOFF_NAME_WORDS {
+                // The name must read like a name; otherwise a real closing
+                // sentence ("Thanks, that helped.") gets torn into a signature.
+                if looks_like_name(name)
+                    && name.split_whitespace().count() <= MAX_SIGNOFF_NAME_WORDS
+                {
                     signoff = Some(format!("{},\n{}", phrase, capitalize_first(name)));
                     body = body[..last_start].trim_end().to_string();
                 }
@@ -321,6 +359,14 @@ mod tests {
             "Hey how are you doing today. I hope all is well.",
             // "Thanks for everything" is a body sentence, not a sign-off.
             "The report is done. Thanks for everything you did there.",
+            // Round 27: a lowercase phrase is not a name, so ordinary prose
+            // that merely opens with a greeting word or closes with "thanks"
+            // is left alone instead of being torn into a fake letter.
+            "Hi, sorry, I missed your message yesterday.",
+            "Hi, quick one. Can you approve the invoice before noon?",
+            "The deploy is done. Thanks, that helped.",
+            "I pushed the fix to main. Best, let me know.",
+            "The numbers look right. Cheers, that saves me a trip.",
             "",
         ] {
             assert_eq!(apply_email_structure(text), text, "must no-op: {text:?}");
@@ -342,11 +388,18 @@ mod tests {
 
     #[test]
     fn paragraph_table() {
-        // A discourse cue opens a new paragraph.
+        // A real change of subject opens a new paragraph. Round 27: plain
+        // connectives like "also" no longer count, so an ordinary continuation
+        // stays in one block.
+        assert_paragraphs(
+            "We shipped it. By the way the docs are updated.",
+            4,
+            "We shipped it.\n\nBy the way the docs are updated.",
+        );
         assert_paragraphs(
             "We shipped it. Also the docs are updated.",
             4,
-            "We shipped it.\n\nAlso the docs are updated.",
+            "We shipped it. Also the docs are updated.",
         );
         // The sentence cap opens one too.
         assert_paragraphs(

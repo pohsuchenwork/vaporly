@@ -39,6 +39,14 @@ bindings.ts regenerates only when the debug binary RUNS with cwd=src-tauri
 Keep `@tauri-apps/api` on the same major.minor as the tauri crate (2.10.x);
 a blind `bun update` breaks `tauri build`.
 
+BEFORE ANY RELEASE BUILD, stage the cleanup engine:
+`scripts/ci/fetch-llama-server.sh <rust-target-triple>`.
+`src-tauri/resources/llama/` is gitignored, so a fresh clone has no engine
+payload, and the script deliberately exits 0 when an asset is missing so a
+build never breaks. Skipping it therefore produces a bundle that LOOKS fine
+but logs `NotInstalled (no engine payload for this platform)` and never cleans
+up a dictation. Check `src-tauri/resources/llama/llama-server` exists first.
+
 ## Architecture map (src-tauri/src/)
 
 - `lib.rs`: setup, manager init, command registration (collect_commands!)

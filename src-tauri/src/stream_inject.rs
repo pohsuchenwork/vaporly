@@ -1504,7 +1504,7 @@ mod tests {
             "so um, at eight, no wait, nine works for me. and then some more words here",
             HOME,
         );
-        assert_eq!(c.sink.typed, "So at 9 works for me.");
+        assert_eq!(c.sink.typed, "At 9 works for me.");
     }
 
     #[test]

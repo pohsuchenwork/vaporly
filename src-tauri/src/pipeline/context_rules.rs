@@ -9,17 +9,18 @@
 //! text.
 //!
 //! Per-category decisions (locked with the owner):
-//! - Chat: full punctuation (round 23 reversed the old "messaging style"
-//!   period-drop: the owner wants text to always end with a terminal mark),
-//!   and the text splits into short paragraphs (blank lines) at discourse
-//!   cues or every 2 sentences.
+//! - Chat, Notes, Browser: ONE FLAT BLOCK with full punctuation. Round 27
+//!   removed the automatic paragraph splitting: breaking on discourse cues
+//!   ("also", "plus", "anyway" are ordinary connectives, not topic shifts)
+//!   and every 2 to 4 sentences chopped continuous thoughts into blank-line
+//!   confetti, and the inserted blank lines also broke the live-to-final
+//!   binding. Email is now the only reshaping category.
 //! - Code editor or terminal: literal text. No ITN, no caps, no terminal
 //!   punctuation, no structure - the ONLY punctuation-free category (a
 //!   period appended to a shell command is destructive). Custom
 //!   words/phrases, filler fix up, and the mind-change pass still run: they
 //!   fix STT errors, not formatting.
 //! - Email: greeting / body / sign-off blocks.
-//! - Notes, Browser: mild paragraphs (every 4 sentences or a discourse cue).
 //! - General (and any category toggled off): one flat block, unchanged.
 
 use serde::{Deserialize, Serialize};
@@ -47,8 +48,13 @@ pub enum Structure {
     /// Greeting line, blank line, body, blank line, sign-off + name line.
     Email,
     /// Paragraphs separated by blank lines: a new paragraph starts at a
-    /// discourse cue ("also", "anyway", "by the way", ...) or after
+    /// discourse cue ("by the way", "on another note", ...) or after
     /// `max_sentences` sentences.
+    ///
+    /// No category selects this today (round 27: automatic splitting hurt
+    /// clarity more than it helped). The variant and `apply_paragraphs` stay
+    /// so re-enabling is a one-line edit in `rules_for`.
+    #[allow(dead_code)]
     Paragraphs { max_sentences: u8 },
 }
 
@@ -74,10 +80,11 @@ pub struct CategoryRules {
 /// The deterministic rules for a category.
 pub fn rules_for(category: CategoryId) -> CategoryRules {
     match category {
-        CategoryId::Chat => CategoryRules {
-            structure: Structure::Paragraphs { max_sentences: 2 },
-            ..CategoryRules::default()
-        },
+        // Chat, Notes, and Browser stay ONE FLAT BLOCK. Automatic paragraph
+        // splitting broke a continuous thought into a blank line every couple
+        // of sentences (ordinary connectives like "also" read as topic
+        // shifts), which hurt clarity far more than the layout helped.
+        CategoryId::Chat => CategoryRules::default(),
         CategoryId::Code => CategoryRules {
             skip_itn: true,
             skip_caps: true,
@@ -88,10 +95,7 @@ pub fn rules_for(category: CategoryId) -> CategoryRules {
             structure: Structure::Email,
             ..CategoryRules::default()
         },
-        CategoryId::Notes | CategoryId::Browser => CategoryRules {
-            structure: Structure::Paragraphs { max_sentences: 4 },
-            ..CategoryRules::default()
-        },
+        CategoryId::Notes | CategoryId::Browser => CategoryRules::default(),
         CategoryId::General => CategoryRules::default(),
     }
 }
@@ -101,15 +105,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn chat_keeps_full_punctuation_and_splits_paragraphs() {
-        // Round 23: the owner wants every dictation to end with a terminal
-        // mark, so chat no longer skips or drops punctuation.
+    fn chat_keeps_full_punctuation_in_one_flat_block() {
+        // Round 23: every dictation ends with a terminal mark, so chat never
+        // skips or drops punctuation. Round 27: and it is no longer split into
+        // paragraphs, so chat is byte-identical to no context at all.
         let r = rules_for(CategoryId::Chat);
         assert!(!r.skip_itn);
         assert!(!r.skip_caps);
         assert!(!r.skip_terminal_punct);
         assert!(!r.drop_final_terminal_period);
-        assert_eq!(r.structure, Structure::Paragraphs { max_sentences: 2 });
+        assert_eq!(r.structure, Structure::Flat);
+        assert_eq!(r, CategoryRules::default());
     }
 
     #[test]
@@ -124,17 +130,12 @@ mod tests {
 
     #[test]
     fn structure_table_matches_the_owner_decisions() {
-        // The round-21 tuning table: email layout for Email, short paragraphs
-        // for Chat, milder paragraphs for Notes + Browser, flat for General.
+        // Round 27: Email is the ONLY category that reshapes text. Everything
+        // else stays one flat block.
         assert_eq!(rules_for(CategoryId::Email).structure, Structure::Email);
-        assert_eq!(
-            rules_for(CategoryId::Notes).structure,
-            Structure::Paragraphs { max_sentences: 4 }
-        );
-        assert_eq!(
-            rules_for(CategoryId::Browser).structure,
-            Structure::Paragraphs { max_sentences: 4 }
-        );
+        assert_eq!(rules_for(CategoryId::Notes).structure, Structure::Flat);
+        assert_eq!(rules_for(CategoryId::Browser).structure, Structure::Flat);
+        assert_eq!(rules_for(CategoryId::Chat).structure, Structure::Flat);
         assert_eq!(rules_for(CategoryId::General), CategoryRules::default());
         // Aside from structure, the prose categories still suppress nothing.
         for cat in [CategoryId::Email, CategoryId::Notes, CategoryId::Browser] {

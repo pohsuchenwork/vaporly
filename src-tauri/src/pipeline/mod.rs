@@ -111,6 +111,12 @@ pub fn run_deterministic(text: &str, cfg: &StageConfig) -> String {
     let rules = cfg.rules();
     if !rules.skip_itn {
         out = apply_itn(&out, tail_guard);
+        // 5b. The other direction: the recognizer emits digits inconsistently
+        // (the same dictation can yield "one one problem" and "say 1"), so
+        // spell lone small digits back out. Runs after ITN and before shaping
+        // so a number opening a sentence still gets capitalized, and after
+        // mind-change (stage 4) so that stage keeps seeing spoken forms.
+        out = crate::audio_toolkit::apply_number_prose(&out, tail_guard);
     }
 
     // 6. Shaping.
@@ -131,8 +137,15 @@ fn shape_text(text: &str, cfg: &StageConfig) -> String {
     let mut out = text.to_string();
     if !rules.skip_caps {
         out = normalize_sentence_caps(&out);
+        // The recognizer punctuates on pauses, so it emits a comma followed by
+        // a sentence-style capital ("it's good now, So could we").
+        out = crate::audio_toolkit::lowercase_after_comma(&out);
     }
-    if !rules.skip_terminal_punct {
+    // Already-structured text (the post-LLM re-shape of an email) ends on a
+    // signature line, not a sentence: appending a period there would glue one
+    // onto the sender's name, and the structure step below no-ops on text that
+    // already has blank lines, so it could never be undone.
+    if !rules.skip_terminal_punct && !out.contains("\n\n") {
         out = ensure_terminal_punctuation(&out);
     }
     // Block structure (round 21), FINAL text only: the live preview stays a
@@ -257,18 +270,15 @@ mod pipeline_tests {
     }
 
     #[test]
-    fn e2e_chat_splits_paragraphs_and_keeps_punctuation() {
+    fn e2e_chat_is_one_flat_block_with_full_punctuation() {
         let text = "We shipped it today. The tests are green. Also the docs are updated.";
         let fin = run_deterministic(
             text,
             &cfg_with(Some(CategoryId::Chat), FeatureLevel::Off, false),
         );
-        // Round 23: chat keeps its final period (the owner wants every
-        // dictation to end with a terminal mark).
-        assert_eq!(
-            fin,
-            "We shipped it today. The tests are green.\n\nAlso the docs are updated."
-        );
+        // Round 23 keeps the final period; round 27 stopped splitting, so the
+        // dictation arrives exactly as spoken, in one block.
+        assert_eq!(fin, text);
         let live = run_deterministic(
             text,
             &cfg_with(Some(CategoryId::Chat), FeatureLevel::Off, true),
@@ -277,17 +287,15 @@ mod pipeline_tests {
     }
 
     #[test]
-    fn e2e_notes_split_milder_and_general_stays_flat() {
+    fn e2e_notes_and_general_stay_flat() {
         // No number words: ITN must not rewrite the fixture.
         let five = "The alpha part is done. The beta part is done. The gamma part is done. The delta part is done. The epsilon part is done.";
         let notes = run_deterministic(
             five,
             &cfg_with(Some(CategoryId::Notes), FeatureLevel::Off, false),
         );
-        assert_eq!(
-            notes,
-            "The alpha part is done. The beta part is done. The gamma part is done. The delta part is done.\n\nThe epsilon part is done."
-        );
+        // Round 27: notes no longer splits either; only email reshapes.
+        assert_eq!(notes, five);
         let general = run_deterministic(
             five,
             &cfg_with(Some(CategoryId::General), FeatureLevel::Off, false),
@@ -371,7 +379,7 @@ mod pipeline_tests {
         let cfg = cfg_with(None, FeatureLevel::Medium, false);
         assert_eq!(
             run_deterministic("So um, at eight, no wait, nine", &cfg),
-            "So at 9."
+            "At 9."
         );
     }
 
@@ -385,7 +393,7 @@ mod pipeline_tests {
         let cfg = StageConfig::from_settings(&s, false, false, None);
         assert_eq!(
             run_deterministic("So um, at eight, no wait, nine", &cfg),
-            "So at 8, no wait, 9."
+            "At 8, no wait, 9."
         );
     }
 
@@ -406,9 +414,11 @@ mod pipeline_tests {
             run_deterministic("So um, at eight, no wait, nine", &cfg),
             "At 9."
         );
+        // Round 27: a lone small number in plain prose is spelled out. "at
+        // nine" above still converts because the time word anchors it.
         assert_eq!(
             run_deterministic("are we on for nine?", &cfg),
-            "Are we on for 9?"
+            "Are we on for nine?"
         );
         // Live text gets the provisional period too (prefix stability).
         let live = cfg_with(Some(CategoryId::Chat), FeatureLevel::High, true);
@@ -523,7 +533,7 @@ mod pipeline_tests {
             }
         }
         assert!(
-            stable_prefix.starts_with("So at 9 works for me."),
+            stable_prefix.starts_with("At 9 works for me."),
             "the series never captured the corrected first sentence: {stable_prefix:?}"
         );
         let final_out = run_deterministic(full, &cfg_final);

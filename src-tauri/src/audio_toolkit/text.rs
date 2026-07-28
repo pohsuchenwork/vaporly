@@ -378,13 +378,16 @@ pub(crate) fn extract_punctuation(word: &str) -> (&str, &str) {
 /// maps `settings::FeatureLevel` onto it; Off never reaches this module).
 ///
 /// - `Light`: core hesitations only (uh, um, ...) + 3+ stutter collapse.
-/// - `Medium`: the full per-language list + stutter collapse. Byte-identical
-///   to the v1 streamlining behavior; the original test corpus guards it.
-/// - `High`: Medium + positionally-guarded discourse fillers (comma-bounded
-///   ", you know," / ", like,"; sentence-initial "so," "well," "anyway,"
-///   clusters), pair dedup at exactly 2 repeats (with an allowlist for words
-///   that legitimately double), and clause-initial false-start collapse
-///   ("I went, I went to the store" -> "I went to the store").
+/// - `Medium`: the full per-language list + stutter collapse, plus the
+///   positionally-guarded discourse fillers (comma-bounded ", you know," /
+///   ", like,"; sentence-initial "so," "well," "anyway," clusters) and pair
+///   dedup at exactly 2 repeats, with an allowlist for words that
+///   legitimately double. Those were High-only until real dictations showed
+///   that "like" and "you know" are most of what makes a transcript
+///   unreadable, and leaving them in also buried the self-corrections the
+///   model is meant to resolve.
+/// - `High`: Medium + clause-initial false-start collapse ("I went, I went to
+///   the store" -> "I went to the store"), the most aggressive rewrite.
 ///
 /// Inter-stage contract: NO level ever removes "actually" or "I mean"; those
 /// are mind-change cues owned by `audio_toolkit::mind_change`, which runs
@@ -443,13 +446,13 @@ fn get_filler_words_for_language(lang: &str) -> &'static [&'static str] {
 
 static MULTI_SPACE_PATTERN: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s{2,}").unwrap());
 
-/// Comma-bounded discourse fillers removed only at High: ", you know," and
-/// ", like," collapse to a single comma.
+/// Comma-bounded discourse fillers removed at Medium and up: ", you know,"
+/// and ", like," collapse to a single comma.
 static DISCOURSE_COMMA_PATTERN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"(?i),\s+(?:you know|like),").unwrap());
 
-/// Sentence-initial "so," / "well," / "anyway," clusters removed only at
-/// High. Hesitations between the discourse word and its comma are absorbed
+/// Sentence-initial "so," / "well," / "anyway," clusters removed at Medium
+/// and up. Hesitations between the discourse word and its comma are absorbed
 /// ("So um, at eight" -> "at eight"), which is why this runs BEFORE the
 /// per-word hesitation removal.
 static SENTENCE_INITIAL_PATTERN: Lazy<Regex> = Lazy::new(|| {
@@ -460,8 +463,9 @@ static SENTENCE_INITIAL_PATTERN: Lazy<Regex> = Lazy::new(|| {
 /// Collapses repeated words to a single instance.
 ///
 /// Always collapses 3+ repetitions (stutter artifacts: "wh wh wh wh" -> "wh",
-/// "I I I I" -> "I"). With `pair_dedup` (High), exactly-2 repeats also
-/// collapse unless the word is on [`PAIR_DEDUP_ALLOWLIST`] ("no no is fine").
+/// "I I I I" -> "I"). With `pair_dedup` (Medium and up), exactly-2 repeats
+/// also collapse unless the word is on [`PAIR_DEDUP_ALLOWLIST`] ("no no is
+/// fine").
 fn collapse_stutters(text: &str, pair_dedup: bool) -> String {
     let words: Vec<&str> = text.split_whitespace().collect();
     if words.is_empty() {
@@ -589,11 +593,12 @@ fn collapse_false_starts(text: &str) -> String {
 pub fn filter_transcription_output(text: &str, lang: &str, level: FillerLevel) -> String {
     let mut filtered = text.to_string();
 
-    // High: strip sentence-initial discourse clusters BEFORE the per-word
-    // hesitation removal, so "So um," is seen as one comma-closed cluster.
-    // The positional patterns are English-shaped; other languages skip them.
+    // Medium and up: strip sentence-initial discourse clusters BEFORE the
+    // per-word hesitation removal, so "So um," is seen as one comma-closed
+    // cluster. The positional patterns are English-shaped; other languages
+    // skip them.
     let base_lang = lang.split(&['-', '_'][..]).next().unwrap_or(lang);
-    let english_extras = level >= FillerLevel::High && base_lang == "en";
+    let english_extras = level >= FillerLevel::Medium && base_lang == "en";
     if english_extras {
         filtered = SENTENCE_INITIAL_PATTERN
             .replace_all(&filtered, "$1")
@@ -624,8 +629,8 @@ pub fn filter_transcription_output(text: &str, lang: &str, level: FillerLevel) -
     }
 
     // Collapse repeated 1-2 letter words (stutter artifacts like "wh wh wh wh");
-    // High also dedups exact pairs (allowlist-guarded).
-    filtered = collapse_stutters(&filtered, level >= FillerLevel::High);
+    // Medium and up also dedup exact pairs (allowlist-guarded).
+    filtered = collapse_stutters(&filtered, level >= FillerLevel::Medium);
 
     if level >= FillerLevel::High {
         filtered = collapse_false_starts(&filtered);
@@ -697,8 +702,9 @@ mod tests {
     #[test]
     fn test_filter_filler_words_with_punctuation() {
         let text = "Well, uhm, I think, uh. that's right";
+        // Medium also clears the sentence-opening "Well," cluster.
         let result = filter_transcription_output(text, "en", FillerLevel::Medium);
-        assert_eq!(result, "Well, I think, that's right");
+        assert_eq!(result, "I think, that's right");
     }
 
     #[test]
@@ -877,42 +883,77 @@ mod tests {
     }
 
     #[test]
-    fn high_keeps_so_without_comma_and_medium_keeps_so_always() {
+    fn a_bare_so_without_a_comma_is_kept_at_every_level() {
         // No comma = possibly a real conjunction ("So far so good").
-        assert_eq!(
-            filter_transcription_output("So far so good", "en", FillerLevel::High),
-            "So far so good"
-        );
+        for level in [FillerLevel::Light, FillerLevel::Medium, FillerLevel::High] {
+            assert_eq!(
+                filter_transcription_output("So far so good", "en", level),
+                "So far so good",
+                "{level:?}"
+            );
+        }
+        // Medium and up strip the comma-closed opener; Light leaves it.
         assert_eq!(
             filter_transcription_output("So, let's begin", "en", FillerLevel::Medium),
+            "let's begin"
+        );
+        assert_eq!(
+            filter_transcription_output("So, let's begin", "en", FillerLevel::Light),
             "So, let's begin"
         );
     }
 
     #[test]
-    fn high_pair_dedup_with_allowlist() {
+    fn medium_and_high_pair_dedup_with_allowlist() {
+        for level in [FillerLevel::Medium, FillerLevel::High] {
+            assert_eq!(
+                filter_transcription_output("the the meeting", "en", level),
+                "the meeting",
+                "{level:?}"
+            );
+            // Allowlisted doubles survive.
+            assert_eq!(
+                filter_transcription_output("no no is fine", "en", level),
+                "no no is fine",
+                "{level:?}"
+            );
+            assert_eq!(
+                filter_transcription_output("he had had enough", "en", level),
+                "he had had enough",
+                "{level:?}"
+            );
+            assert_eq!(
+                filter_transcription_output("it was very very good", "en", level),
+                "it was very very good",
+                "{level:?}"
+            );
+        }
+        // Light never pair-dedups.
         assert_eq!(
-            filter_transcription_output("the the meeting", "en", FillerLevel::High),
-            "the meeting"
-        );
-        // Allowlisted doubles survive even at High.
-        assert_eq!(
-            filter_transcription_output("no no is fine", "en", FillerLevel::High),
-            "no no is fine"
-        );
-        assert_eq!(
-            filter_transcription_output("he had had enough", "en", FillerLevel::High),
-            "he had had enough"
-        );
-        assert_eq!(
-            filter_transcription_output("it was very very good", "en", FillerLevel::High),
-            "it was very very good"
-        );
-        // Medium never pair-dedups.
-        assert_eq!(
-            filter_transcription_output("the the meeting", "en", FillerLevel::Medium),
+            filter_transcription_output("the the meeting", "en", FillerLevel::Light),
             "the the meeting"
         );
+    }
+
+    #[test]
+    fn medium_strips_discourse_fillers_but_keeps_mind_change_cues() {
+        // The noise that made real dictations unreadable.
+        assert_eq!(
+            filter_transcription_output("it is, like, fine", "en", FillerLevel::Medium),
+            "it is, fine"
+        );
+        assert_eq!(
+            filter_transcription_output("we ship, you know, Friday", "en", FillerLevel::Medium),
+            "we ship, Friday"
+        );
+        // Inter-stage contract: mind-change owns these cues, so no level may
+        // remove them.
+        for level in [FillerLevel::Light, FillerLevel::Medium, FillerLevel::High] {
+            let out = filter_transcription_output("at eight, actually nine", "en", level);
+            assert!(out.contains("actually"), "{level:?}: {out}");
+            let out = filter_transcription_output("at eight, I mean nine", "en", level);
+            assert!(out.contains("I mean"), "{level:?}: {out}");
+        }
     }
 
     #[test]
@@ -1050,6 +1091,45 @@ pub fn normalize_sentence_caps(text: &str) -> String {
         }
     }
     out
+}
+
+/// Function words that are never proper nouns, so a capital on one directly
+/// after a comma is always a recognizer artifact rather than a real name.
+const LOWERCASE_AFTER_COMMA: &[&str] = &[
+    "so", "but", "and", "then", "because", "which", "that", "if", "when", "or", "also", "however",
+    "though", "although", "while", "since", "plus", "yet", "still", "actually",
+];
+
+static COMMA_CAPITAL_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(&format!(
+        r"(,\s+)({})\b",
+        LOWERCASE_AFTER_COMMA
+            .iter()
+            .map(|w| {
+                let mut c = w.chars();
+                let first = c.next().unwrap().to_uppercase().to_string();
+                format!("{first}{}", c.as_str())
+            })
+            .collect::<Vec<_>>()
+            .join("|")
+    ))
+    .unwrap()
+});
+
+/// Lowercase a capitalized function word sitting right after a comma.
+///
+/// The recognizer punctuates on pauses, so it emits things like "it's good
+/// now, So could we" - a comma with a sentence-style capital after it. Nothing
+/// else in the pipeline lowercases (`normalize_sentence_caps` only ever adds
+/// capitals), so the artifact reached the paste whenever the model pass did
+/// not happen to fix it. Only the closed list above is touched, so names and
+/// "I" are never harmed.
+pub fn lowercase_after_comma(text: &str) -> String {
+    COMMA_CAPITAL_PATTERN
+        .replace_all(text, |caps: &regex::Captures| {
+            format!("{}{}", &caps[1], caps[2].to_lowercase())
+        })
+        .to_string()
 }
 
 /// Append a period when the text ends without terminal punctuation. Closing
@@ -1402,5 +1482,42 @@ mod sentence_tests {
         assert!(!starts_with_correction_cue("The meeting is at nine"));
         assert!(!starts_with_correction_cue("Nothing else matters"));
         assert!(!starts_with_correction_cue("Waiting for the bus"));
+    }
+}
+
+#[cfg(test)]
+mod comma_capital_tests {
+    use super::lowercase_after_comma;
+
+    #[test]
+    fn lowercases_only_function_words_after_a_comma() {
+        // The recognizer artifact the owner reported.
+        assert_eq!(
+            lowercase_after_comma("it's good now, So could we ship it"),
+            "it's good now, so could we ship it"
+        );
+        assert_eq!(
+            lowercase_after_comma("I looked, But it was gone"),
+            "I looked, but it was gone"
+        );
+        // Names and "I" are never touched.
+        assert_eq!(
+            lowercase_after_comma("I called, John answered"),
+            "I called, John answered"
+        );
+        assert_eq!(
+            lowercase_after_comma("well, I think so"),
+            "well, I think so"
+        );
+        // A real sentence start keeps its capital.
+        assert_eq!(
+            lowercase_after_comma("That is done. So let's move on"),
+            "That is done. So let's move on"
+        );
+        // Mid-sentence occurrences without a comma are left alone.
+        assert_eq!(
+            lowercase_after_comma("we ship So it goes"),
+            "we ship So it goes"
+        );
     }
 }
