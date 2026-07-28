@@ -253,6 +253,117 @@ const TIME_CONTEXT: &[&str] = &[
     "at", "around", "by", "until", "till", "before", "after", "from",
 ];
 
+/// Units and countable nouns that make a number read as a measurement, so it
+/// stays a digit even when it is small ("5 minutes", "3 files").
+const UNIT_WORDS: &[&str] = &[
+    "second",
+    "seconds",
+    "minute",
+    "minutes",
+    "hour",
+    "hours",
+    "day",
+    "days",
+    "week",
+    "weeks",
+    "month",
+    "months",
+    "year",
+    "years",
+    "km",
+    "kilometre",
+    "kilometres",
+    "kilometer",
+    "kilometers",
+    "m",
+    "metre",
+    "metres",
+    "meter",
+    "meters",
+    "cm",
+    "mm",
+    "mile",
+    "miles",
+    "ft",
+    "feet",
+    "inch",
+    "inches",
+    "kg",
+    "kilogram",
+    "kilograms",
+    "lb",
+    "lbs",
+    "pound",
+    "pounds",
+    "oz",
+    "ounce",
+    "ounces",
+    "gram",
+    "grams",
+    "ml",
+    "litre",
+    "litres",
+    "liter",
+    "liters",
+    "kb",
+    "mb",
+    "gb",
+    "tb",
+    "px",
+    "pt",
+    "hz",
+    "khz",
+    "mhz",
+    "ghz",
+    "degrees",
+    "percent",
+    "times",
+    "x",
+    "files",
+    "file",
+    "items",
+    "item",
+    "people",
+    "copies",
+    "pages",
+    "page",
+    "words",
+    "characters",
+    "chars",
+];
+
+/// Nouns that turn a following number into an identifier ("version 3",
+/// "step 2"), where a digit is the natural form.
+const IDENTIFIER_NOUNS: &[&str] = &[
+    "version", "v", "chapter", "step", "page", "figure", "table", "room", "part", "phase", "round",
+    "level", "tier", "line", "item", "number", "no", "issue", "pr", "ticket", "build", "grade",
+    "week", "day", "q", "quarter",
+];
+
+fn is_unit_word(w: &str) -> bool {
+    UNIT_WORDS.contains(&w)
+}
+
+fn is_identifier_noun(w: &str) -> bool {
+    IDENTIFIER_NOUNS.contains(&w)
+}
+
+/// Spell a single digit back out for prose.
+fn digit_to_word(d: char) -> Option<&'static str> {
+    Some(match d {
+        '1' => "one",
+        '2' => "two",
+        '3' => "three",
+        '4' => "four",
+        '5' => "five",
+        '6' => "six",
+        '7' => "seven",
+        '8' => "eight",
+        '9' => "nine",
+        _ => return None,
+    })
+}
+
 fn digit_time(core: &str) -> Option<String> {
     // "8", "12", "6:45" (1-2 digit hour, optional :MM)
     let (h, rest) = match core.find(':') {
@@ -295,6 +406,121 @@ pub fn apply_itn(text: &str, protect_tail_words: usize) -> String {
         .map(|(idx, line)| apply_itn_line(line, if idx == last { protect_tail_words } else { 0 }))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Spell standalone small digits back out as words, so prose reads the same
+/// no matter which spelling the recognizer happened to emit.
+///
+/// The speech model is inconsistent: the same dictation can produce "one one
+/// problem" and "if you say 1". `apply_itn` fixes the word-to-digit direction;
+/// this fixes digit-to-word, and together they make the output stable. Only a
+/// bare digit 1-9 in plain prose is touched. Anything that reads as data keeps
+/// its digits: times, money, percentages, decimals, fractions, measurements,
+/// identifiers ("version 3"), list numbering, and digit runs.
+pub fn apply_number_prose(text: &str, protect_tail_words: usize) -> String {
+    if !text.contains('\n') {
+        return number_prose_line(text, protect_tail_words);
+    }
+    let lines: Vec<&str> = text.split('\n').collect();
+    let last = lines.len() - 1;
+    lines
+        .iter()
+        .enumerate()
+        .map(|(idx, line)| {
+            number_prose_line(line, if idx == last { protect_tail_words } else { 0 })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn number_prose_line(text: &str, protect_tail_words: usize) -> String {
+    let toks = tokenize(text);
+    if toks.is_empty() {
+        return text.to_string();
+    }
+    let limit = toks.len().saturating_sub(protect_tail_words);
+    // Sentence spans, so a number can be judged against its own sentence only.
+    let mut sentence_of: Vec<usize> = Vec::with_capacity(toks.len());
+    let mut s = 0usize;
+    for tok in toks.iter() {
+        sentence_of.push(s);
+        if is_terminator_suffix(tok.raw) {
+            s += 1;
+        }
+    }
+    // Whether this token, judged on its own, is a lone small number in prose.
+    let spellable = |i: usize| -> bool {
+        let tok = &toks[i];
+        let is_lone_digit = tok.core.len() == 1
+            && tok
+                .core
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_digit() && c != '0');
+        if !is_lone_digit {
+            return false;
+        }
+        // A currency or percent shell, a decimal point, a colon: all mean the
+        // token is data even though its core is one digit.
+        let bare_shell = tok.prefix.is_empty()
+            && tok
+                .suffix
+                .chars()
+                .all(|c| matches!(c, '.' | ',' | '!' | '?' | ';' | ':' | ')' | '"' | '\''));
+        let prev = i.checked_sub(1).map(|p| toks[p].core.as_str());
+        let next = toks.get(i + 1).map(|t| t.core.as_str());
+        let neighbours_numeric = prev.is_some_and(|w| w.chars().any(|c| c.is_ascii_digit()))
+            || next.is_some_and(|w| w.chars().any(|c| c.is_ascii_digit()));
+        bare_shell
+            && !neighbours_numeric
+            && !next.is_some_and(is_unit_word)
+            && !prev.is_some_and(is_identifier_noun)
+            && !prev.is_some_and(|w| TIME_CONTEXT.contains(&w))
+    };
+    // A sentence that carries a DATA number ("at 8, no wait, 9") keeps digits
+    // throughout: spelling only some of them out is the very inconsistency
+    // this pass exists to remove. Sentences whose only numbers are lone small
+    // ones ("say 1, it becomes 1") spell all of them out together.
+    let has_data_number = |i: usize| -> bool {
+        toks.iter().enumerate().any(|(j, t)| {
+            j != i
+                && sentence_of[j] == sentence_of[i]
+                && t.core.chars().any(|c| c.is_ascii_digit())
+                && !spellable(j)
+        })
+    };
+    let mut out: Vec<String> = Vec::with_capacity(toks.len());
+    let mut sentence_start = true;
+    for (i, tok) in toks.iter().enumerate() {
+        let keep = tok.raw.to_string();
+        // A leading "1." or "1)" is list numbering, not prose.
+        let listish = sentence_start && tok.suffix.starts_with(['.', ')']);
+
+        let convert = i < limit && spellable(i) && !listish && !has_data_number(i);
+
+        if convert {
+            let word = tok
+                .core
+                .chars()
+                .next()
+                .and_then(digit_to_word)
+                .unwrap_or_default();
+            let word = if sentence_start {
+                let mut c = word.chars();
+                match c.next() {
+                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                    None => String::new(),
+                }
+            } else {
+                word.to_string()
+            };
+            out.push(format!("{}{}{}", tok.prefix, word, tok.suffix));
+        } else {
+            out.push(keep);
+        }
+        sentence_start = is_terminator_suffix(tok.suffix);
+    }
+    out.join(" ")
 }
 
 fn apply_itn_line(text: &str, protect_tail_words: usize) -> String {
@@ -344,6 +570,10 @@ fn apply_itn_line(text: &str, protect_tail_words: usize) -> String {
     let mut out: Vec<String> = Vec::new();
     let mut i = 0; // flat index
     let mut emitted_tok = usize::MAX; // last source token already emitted
+                                      // Once a sentence has written one number as digits, later numbers in that
+                                      // same sentence follow suit: "at eight, no wait, nine" must not come out
+                                      // as "at 8, no wait, nine". Reset at every sentence terminator.
+    let mut digits_in_sentence = false;
 
     let emit_verbatim = |out: &mut Vec<String>, emitted_tok: &mut usize, ti: usize| {
         if *emitted_tok == ti {
@@ -366,7 +596,7 @@ fn apply_itn_line(text: &str, protect_tail_words: usize) -> String {
                 .find(|&j| is_terminator_suffix(toks[tok_of_flat[j]].raw))
                 .map(|j| j + 1)
                 .unwrap_or(flat.len());
-            match try_match(&flat[..sent_end], i) {
+            match try_match_with(&flat[..sent_end], i, digits_in_sentence) {
                 Some(Matched::Replace(rep, consumed)) => {
                     let end = i + consumed;
                     let end_tok = tok_of_flat[end - 1];
@@ -378,6 +608,7 @@ fn apply_itn_line(text: &str, protect_tail_words: usize) -> String {
                         emitted_tok = end_tok;
                         i = end;
                         replaced = true;
+                        digits_in_sentence = true;
                     }
                 }
                 Some(Matched::Skip(consumed)) => {
@@ -407,14 +638,25 @@ fn apply_itn_line(text: &str, protect_tail_words: usize) -> String {
                 i += 1;
             }
         }
+        // A new sentence starts fresh: its own numbers decide its own form.
+        if is_terminator_suffix(toks[tok_of_flat[i.min(flat.len()) - 1]].raw) {
+            digits_in_sentence = false;
+        }
     }
 
     out.join(" ")
 }
 
+#[cfg(test)]
+fn try_match(flat: &[String], i: usize) -> Option<Matched> {
+    try_match_with(flat, i, false)
+}
+
 /// Try every matcher at flat position `i`. `flat` is pre-truncated to the
 /// current sentence, so no matcher can see or consume across a terminator.
-fn try_match(flat: &[String], i: usize) -> Option<Matched> {
+/// `digits_in_sentence` records whether an earlier number in THIS sentence was
+/// already written as digits, so the sentence stays internally consistent.
+fn try_match_with(flat: &[String], i: usize, digits_in_sentence: bool) -> Option<Matched> {
     let w = flat[i].as_str();
 
     // ---- M1 time: digit-led normalization ----
@@ -477,10 +719,16 @@ fn try_match(flat: &[String], i: usize) -> Option<Matched> {
         return None;
     }
 
-    // Decimal: N point d [d ...]
+    // Decimal: N point d [d ...], repeated for dotted forms like a version
+    // number ("three point zero point one" -> "3.0.1"). Without the repeat the
+    // second "point" fell through to the juxtaposition guard, which consumed
+    // the whole run verbatim and left the version spelled out.
     let mut value_str = int_val.to_string();
     let mut used = int_used;
-    if flat.get(i + used).map(|s| s.as_str()) == Some("point") {
+    loop {
+        if flat.get(i + used).map(|s| s.as_str()) != Some("point") {
+            break;
+        }
         let mut digits = String::new();
         let mut j = i + used + 1;
         while let Some(d) = flat.get(j).and_then(|s| {
@@ -493,10 +741,11 @@ fn try_match(flat: &[String], i: usize) -> Option<Matched> {
             digits.push_str(&d.to_string());
             j += 1;
         }
-        if !digits.is_empty() {
-            value_str = format!("{int_val}.{digits}");
-            used = j - i;
+        if digits.is_empty() {
+            break;
         }
+        value_str = format!("{value_str}.{digits}");
+        used = j - i;
     }
 
     // Percent
@@ -580,6 +829,23 @@ fn try_match(flat: &[String], i: usize) -> Option<Matched> {
         }
         return Some(Matched::Skip(j - i));
     }
+
+    // Prose convention: small numbers are spelled out ("I only need one
+    // thing"), digits are for quantities that read as data. Everything with a
+    // real numeric context already returned above (times, money, percent,
+    // fractions, decimals), so what reaches here is a bare cardinal. Skip it
+    // when it is a lone small value with no measuring context, leaving the
+    // spoken word untouched.
+    if used == 1 && int_used == 1 && value_str.len() == 1 && !digits_in_sentence {
+        let follows_time_word = i
+            .checked_sub(1)
+            .and_then(|p| flat.get(p))
+            .is_some_and(|w| TIME_CONTEXT.contains(&w.as_str()));
+        let precedes_unit = flat.get(i + used).is_some_and(|w| is_unit_word(w));
+        if !follows_time_word && !precedes_unit {
+            return Some(Matched::Skip(used));
+        }
+    }
     Some(Matched::Replace(value_str, used))
 }
 
@@ -628,8 +894,11 @@ mod itn_tests {
             // decimals
             ("six point five", "6.5"),
             ("three point one four", "3.14"),
-            // cardinals
-            ("nine", "9"),
+            // Dotted forms: a version number keeps every group.
+            ("version three point zero point one", "version 3.0.1"),
+            ("three point zero point one", "3.0.1"),
+            // cardinals: 10 and up are digits, and a small number keeps its
+            // digits when it measures something or follows a time word.
             ("ninety nine", "99"),
             ("one hundred and eighty", "180"),
             ("nine hundred", "900"),
@@ -637,6 +906,8 @@ mod itn_tests {
             ("a hundred", "100"),
             ("twenty-five files", "25 files"),
             ("we need nine copies", "we need 9 copies"),
+            ("five minutes", "5 minutes"),
+            ("meet at eight", "meet at 8"),
         ];
         for (input, want) in cases {
             assert_eq!(itn(input), want, "input: {input}");
@@ -680,7 +951,64 @@ mod itn_tests {
             itn("The price is one hundred. Fifty people came."),
             "The price is 100. 50 people came."
         );
-        assert_eq!(itn("I said eight. Thirty came."), "I said 8. 30 came.");
+        // "eight" is a lone small number in prose so it stays spelled, while
+        // "Thirty" is 10 or more and still converts: the sentence terminator
+        // between them is never crossed either way.
+        assert_eq!(itn("I said eight. Thirty came."), "I said eight. 30 came.");
+    }
+
+    #[test]
+    fn small_numbers_stay_words_in_prose() {
+        // The complaint: every spoken number became a digit.
+        assert_eq!(itn("I only need one thing"), "I only need one thing");
+        assert_eq!(itn("give me five"), "give me five");
+        assert_eq!(itn("nine"), "nine");
+        // ...but a number that measures, times, or identifies keeps digits.
+        assert_eq!(itn("five minutes"), "5 minutes");
+        assert_eq!(itn("we need nine copies"), "we need 9 copies");
+        assert_eq!(itn("call me at nine"), "call me at 9");
+        assert_eq!(itn("by eight tonight"), "by 8 tonight");
+    }
+
+    #[test]
+    fn number_prose_spells_lone_small_digits() {
+        let prose = |s: &str| super::apply_number_prose(s, 0);
+        // The recognizer emits digits inconsistently; normalize them back.
+        assert_eq!(
+            prose("if you say 1 it turns into 1"),
+            "if you say one it turns into one"
+        );
+        assert_eq!(prose("I need 3 of them"), "I need three of them");
+        // Sentence-initial digits get capitalized like any other word.
+        assert_eq!(prose("3 seemed fine."), "Three seemed fine.");
+    }
+
+    #[test]
+    fn number_prose_keeps_data_as_digits() {
+        let prose = |s: &str| super::apply_number_prose(s, 0);
+        for text in [
+            "meet at 9:30",       // time
+            "it costs $5",        // money
+            "about 5% of them",   // percent
+            "roughly 6.5 hours",  // decimal
+            "5 minutes late",     // measurement
+            "version 3 shipped",  // identifier
+            "call 5 5 5 1 2 1 2", // digit run
+            "we need 12 copies",  // 10 and up
+            "meet at 8 tonight",  // time context
+        ] {
+            assert_eq!(prose(text), text, "must keep digits: {text}");
+        }
+    }
+
+    #[test]
+    fn number_prose_is_idempotent_and_guards_the_live_tail() {
+        let prose = |s: &str| super::apply_number_prose(s, 0);
+        let once = prose("I need 3 of them");
+        assert_eq!(prose(&once), once, "must be a fixed point");
+        // The newest words are still growing: leave them alone so the live
+        // preview does not flicker between "3" and "three".
+        assert_eq!(super::apply_number_prose("I need 3", 2), "I need 3");
     }
 
     #[test]

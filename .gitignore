@@ -55,3 +55,16 @@ PERSONAL.md
 .claude/superauto-on
 .claude/last-commit.txt
 src-tauri/resources/llama/
+
+# Local working files: editor and assistant config, internal notes, old release
+# assets. Some of these are tracked in the maintainer's own checkout, which is
+# not a contradiction, since gitignore does not untrack an already-tracked file.
+# The entries are a safety net, so do not remove them as redundant: they are
+# what stops these paths being staged by accident in a clone that should not
+# carry them.
+.claude/
+.vscode/
+docs/QA.md
+docs/PUBLISHING.md
+public/release-notes/
+.publicignore

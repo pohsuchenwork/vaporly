@@ -242,6 +242,251 @@ fn looks_conversational(input: &str, output: &str) -> bool {
     opener_injected || (over_expanded && low_overlap)
 }
 
+/// Words the cleanup jobs may always drop: hesitation fillers, discourse
+/// junk, and the correction cues themselves. Deliberately excludes "not" and
+/// other meaning-bearing words; a reply that drops a negation inverts the
+/// sentence, which is exactly the loss this guard exists to catch.
+const REMOVABLE_WORDS: &[&str] = &[
+    "um",
+    "uh",
+    "uhm",
+    "umm",
+    "uhh",
+    "hmm",
+    "hm",
+    "mmm",
+    "mm",
+    "er",
+    "erm",
+    "eh",
+    "ah",
+    "like",
+    "well",
+    "so",
+    "wait",
+    "scratch",
+    "strike",
+    "bro",
+    "man",
+    "dude",
+    "yo",
+    "dog",
+    "right",
+    "okay",
+    "ok",
+    "basically",
+    "literally",
+    "honestly",
+    "anyway",
+    "yeah",
+    "yep",
+    "nah",
+    "hey",
+    "huh",
+    "oh",
+    "wow",
+    "damn",
+    "shit",
+    "fuck",
+    "fucking",
+    "kinda",
+    "sorta",
+];
+/// The vocabulary the deterministic normalizer itself rewrites into digits or
+/// symbols. A reply that writes the same value a different way ("three point
+/// zero point one" -> "3.0.1") has normalized it, not deleted it.
+///
+/// Excused only when the reply actually produced a digit the input did not
+/// have. Without that condition a genuinely dropped amount ("send five hundred
+/// dollars" -> "send dollars") would read as free, which is exactly the kind of
+/// loss the guard exists to catch.
+const NUMBER_VOCABULARY: &[&str] = &[
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "thirty",
+    "forty",
+    "fifty",
+    "sixty",
+    "seventy",
+    "eighty",
+    "ninety",
+    "hundred",
+    "thousand",
+    "point",
+    "percent",
+    "dollar",
+    "dollars",
+    "cent",
+    "cents",
+    "am",
+    "pm",
+    "oclock",
+];
+/// Cues that mark a self-correction. Text next to one of these is text the
+/// speaker took back, so the cleanup is licensed to delete it.
+const CORRECTION_CUES: &[&str] = &[
+    "no",
+    "not",
+    "wait",
+    "actually",
+    "sorry",
+    "rather",
+    "scratch",
+    "strike",
+    "instead",
+    "mean",
+    "meant",
+    "make",
+    "nevermind",
+];
+/// How far from a deleted span a correction cue may sit and still explain it.
+/// A correction follows the words it retracts ("coffee at 7PM. No, actually
+/// tea"), so the window reaches further forward than back.
+const CUE_LOOKAHEAD_WORDS: usize = 6;
+const CUE_LOOKBEHIND_WORDS: usize = 3;
+/// Novel words one unlicensed run may lose before it counts as a deleted
+/// clause. "Novel" means the word appears NOWHERE in the reply, so collapsing
+/// a repeated phrase never trips this.
+const MAX_NOVEL_LOST_PER_RUN: usize = 5;
+/// Backstop for loss scattered too thinly to trip the per-run rule, as a
+/// percentage of the dictation. Deliberately generous: rambling speech sheds a
+/// lot of interjections ("hey", "yeah", "you know what I'm saying") that no
+/// filler list can fully enumerate, and treating those as data loss is what
+/// made the earlier volume-based guard reject honest tidy-ups.
+const MAX_NOVEL_LOST_PERCENT: usize = 30;
+
+/// True when the model's reply dropped content the speaker did NOT retract.
+///
+/// The distinction is location, not volume. Resolving "coffee at 7PM, no,
+/// actually tea at 10AM" legitimately deletes most of the sentence, so a flat
+/// retention floor rejected every real self-correction and pasted the raw
+/// transcript back. What separates that from genuine data loss is whether a
+/// correction cue sits against the deleted span: the speaker took those words
+/// back, so losing them is the feature working. A span that vanishes with no
+/// cue anywhere near it is the failure this guard exists to catch.
+///
+/// Volume is not the measure either. Counting how many words vanished flagged
+/// ordinary tidy-ups: collapsing "I I don't I don't know bro" removes plenty
+/// of words while losing nothing. So a deletion only counts when it takes
+/// NOVEL words with it, meaning words the reply does not contain anywhere.
+/// Deduplicating a stutter leaves its words present; deleting a sentence does
+/// not.
+fn drops_content(input: &str, output: &str) -> bool {
+    let words = |s: &str| -> Vec<String> {
+        s.split_whitespace()
+            .map(norm_loose)
+            .filter(|w| !w.is_empty())
+            .collect()
+    };
+    let in_words = words(input);
+    if in_words.is_empty() {
+        return false;
+    }
+    let out_words = words(output);
+
+    // Bag of output words; each cancels at most one input occurrence, so a
+    // word said twice and returned once still counts as one loss.
+    let mut available: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for w in &out_words {
+        *available.entry(w.as_str()).or_insert(0) += 1;
+    }
+    let missing: Vec<bool> = in_words
+        .iter()
+        .map(|w| match available.get_mut(w.as_str()) {
+            Some(n) if *n > 0 => {
+                *n -= 1;
+                false
+            }
+            _ => true,
+        })
+        .collect();
+
+    let cue_at = |i: usize| CORRECTION_CUES.contains(&in_words[i].as_str());
+    // A run is explained when a cue sits inside it or close on either side.
+    let licensed = |start: usize, end: usize| -> bool {
+        let from = start.saturating_sub(CUE_LOOKBEHIND_WORDS);
+        let to = (end + CUE_LOOKAHEAD_WORDS).min(in_words.len());
+        (from..to).any(cue_at)
+    };
+
+    // Words the reply does not contain at all. One still present elsewhere was
+    // deduplicated, not lost.
+    let present: std::collections::HashSet<&str> = out_words.iter().map(|w| w.as_str()).collect();
+
+    // Did the reply turn words into figures? True when it carries a
+    // digit-bearing token the input never had, which is what normalization
+    // looks like from here.
+    let has_digit = |w: &str| w.chars().any(|c| c.is_ascii_digit());
+    let in_figures: std::collections::HashSet<&str> = in_words
+        .iter()
+        .map(|w| w.as_str())
+        .filter(|w| has_digit(w))
+        .collect();
+    let normalized = out_words
+        .iter()
+        .any(|w| has_digit(w) && !in_figures.contains(w.as_str()));
+
+    let novel_lost = |j: usize| -> bool {
+        let w = in_words[j].as_str();
+        if present.contains(w) || REMOVABLE_WORDS.contains(&w) {
+            return false;
+        }
+        !(normalized && NUMBER_VOCABULARY.contains(&w))
+    };
+
+    let mut total_novel_lost = 0usize;
+    let mut i = 0usize;
+    while i < in_words.len() {
+        if !missing[i] {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < in_words.len() && missing[i] {
+            i += 1;
+        }
+        if licensed(start, i) {
+            continue;
+        }
+        let run_novel = (start..i).filter(|&j| novel_lost(j)).count();
+        // One unexplained span taking this much new information with it is a
+        // deleted clause.
+        if run_novel >= MAX_NOVEL_LOST_PER_RUN {
+            debug!("content guard: unexplained span lost {run_novel} novel words");
+            return true;
+        }
+        total_novel_lost += run_novel;
+    }
+
+    if total_novel_lost * 100 > in_words.len() * MAX_NOVEL_LOST_PERCENT {
+        debug!(
+            "content guard: {total_novel_lost} novel words lost across {} spoken",
+            in_words.len()
+        );
+        return true;
+    }
+    false
+}
+
 /// One line per dictation stating which cleanup layers actually ran (round
 /// 20 observability): makes any "it did not clean up" report a log read
 /// instead of a guess. `model` is the model-pass outcome for THIS dictation.
@@ -327,29 +572,28 @@ pub(crate) async fn process_transcription_output(
                 post_process_prompt,
             };
         }
-        // G2: reuse sentence cleanups computed while the user spoke; any
-        // mismatch (or no active cleaner) falls back to one full cleanup call.
-        // Timed (round 21): the summary line reports stitch-vs-full plus the
-        // wall time, so "cleanup feels slow" is a log read - and a run of
-        // `applied_full` lines means the during-speech work is being wasted.
+        // Finalize always cleans the WHOLE dictation in one call.
+        //
+        // The old path preferred stitching together per-sentence cleanups
+        // computed during speech. That was faster but judged each sentence in
+        // isolation, so meaning was never evaluated across a full stop: a
+        // transcript split by a spurious period ("That's. Something that has
+        // to happen.") could never be rejoined, and a chunk whose reply came
+        // back empty was silently skipped, deleting that sentence from the
+        // paste. One whole-text call sees the entire utterance and is covered
+        // by the guards below; correctness beats the saved latency.
         let cleanup_started = std::time::Instant::now();
-        let cleaner = app
+        // Retire any active cleaner so its during-speech work is dropped
+        // cleanly rather than reused (it still drove the live preview).
+        let _cleaner = app
             .try_state::<CleanerSlot>()
             .and_then(|slot| slot.0.lock().unwrap().take());
-        let processed = match &cleaner {
-            Some(c) => c.stitch(&final_text, &settings, plan).await,
-            None => None,
-        };
-        let used_stitch = processed.is_some();
-        let processed = match processed {
-            Some(stitched) => Some(stitched),
-            None => crate::pipeline::model_pass::clean_text(app, plan, &final_text).await,
-        };
+        let processed = crate::pipeline::model_pass::clean_text(app, plan, &final_text).await;
         let cleanup_ms = cleanup_started.elapsed().as_millis();
-        let path = if used_stitch { "stitch" } else { "full" };
-        // Never let an empty (or over-collapsed) LLM reply blank the paste:
-        // keep the deterministic final_text instead. This is what stops a
-        // dictation from vanishing entirely.
+        let path = "full";
+        // Never paste less than the speaker said. An empty, over-collapsed,
+        // conversational, or LOSSY reply is discarded in favour of the
+        // deterministic final_text, which always holds the complete words.
         let processed = processed.filter(|out| {
             if out.trim().is_empty() {
                 warn!("cleanup returned empty; keeping the deterministic text");
@@ -361,6 +605,9 @@ pub(crate) async fn process_transcription_output(
                 false
             } else if looks_conversational(&final_text, out) {
                 warn!("cleanup answered the dictation instead of cleaning it; keeping the deterministic text");
+                false
+            } else if drops_content(&final_text, out) {
+                warn!("cleanup dropped dictated content; keeping the deterministic text");
                 false
             } else {
                 true
@@ -431,11 +678,11 @@ fn shows_live_panel(style: OverlayStyle) -> bool {
 /// G2: sentence-incremental cleanup. While the user speaks, completed
 /// sentences from the live COMMITTED text run through the exact same LLM
 /// pipeline the final call uses (same rendered prompt shape, which also keeps
-/// the engine's prefix cache warm). At finalize, cleaned chunks whose source
-/// text is a byte-prefix of the final LLM input are reused and only the
-/// residual tail is cleaned, so finish latency stays near-constant in
-/// dictation length. ANY mismatch falls back to the historical full-text
-/// cleanup call: correctness never depends on the incremental path.
+/// the engine's prefix cache warm). These chunks drive the live textbox
+/// polish only. Round 27 stopped reusing them at finalize: judging one
+/// sentence at a time could never repair meaning across a full stop, and an
+/// empty chunk reply silently deleted its sentence from the paste. Finalize
+/// now always cleans the whole dictation in one guarded call.
 ///
 /// App-managed slot holding the active dictation's cleaner (one at a time).
 pub struct CleanerSlot(pub std::sync::Mutex<Option<std::sync::Arc<LiveCleaner>>>);
@@ -443,10 +690,10 @@ pub struct CleanerSlot(pub std::sync::Mutex<Option<std::sync::Arc<LiveCleaner>>>
 struct CleanedChunk {
     /// This chunk's own (trimmed) source text, kept for cue retraction.
     source: String,
-    /// Byte prefix of the observed filtered text up to this chunk's end. The
-    /// binding test at finalize: the final LLM input must start with it.
+    /// Byte prefix of the observed filtered text cleaned so far: it marks
+    /// where the next chunk starts and lets the injector bind a polish to the
+    /// raw span it replaces.
     src_prefix: String,
-    cleaned: String,
 }
 
 #[derive(Default)]
@@ -613,7 +860,6 @@ impl LiveCleaner {
                         st.chunks.push(CleanedChunk {
                             source: chunk,
                             src_prefix: src_prefix.clone(),
-                            cleaned: cleaned.clone(),
                         });
                         (st.chunks.len() - 1, cleaned, src_prefix)
                     })
@@ -648,84 +894,6 @@ impl LiveCleaner {
     /// stitch; the slot owner drops it afterwards.
     pub fn finish(&self) {
         self.stop.store(true, std::sync::atomic::Ordering::Release);
-    }
-
-    /// Reuse every cleaned chunk that binds to `final_llm_input` and clean
-    /// only the residual tail (under the same `plan` every chunk used).
-    /// `None` = nothing usable (or the residual call failed); the caller then
-    /// runs the historical full-text cleanup.
-    async fn stitch(
-        &self,
-        final_llm_input: &str,
-        settings: &AppSettings,
-        plan: &crate::pipeline::model_pass::ModelPlan,
-    ) -> Option<String> {
-        self.stop.store(true, std::sync::atomic::Ordering::Release);
-        // Let an in-flight chunk land (bounded wait); it extends the prefix.
-        for _ in 0..60 {
-            if !self.state.lock().unwrap().busy {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-
-        let (mut cleaned_parts, consumed, last_source) = {
-            let st = self.state.lock().unwrap();
-            // Chunks form a prefix chain, so the LAST one that binds
-            // validates every earlier one byte-for-byte.
-            let idx = st
-                .chunks
-                .iter()
-                .rposition(|c| final_llm_input.starts_with(c.src_prefix.as_str()))?;
-            let parts: Vec<String> = st.chunks[..=idx]
-                .iter()
-                .map(|c| c.cleaned.clone())
-                .collect();
-            (
-                parts,
-                st.chunks[idx].src_prefix.len(),
-                st.chunks[idx].source.clone(),
-            )
-        };
-
-        let residual = final_llm_input[consumed..].trim().to_string();
-        if !residual.is_empty() {
-            // A residual opening with a correction cue may rewrite the last
-            // stitched sentence: re-clean them together.
-            let residual = if crate::audio_toolkit::starts_with_correction_cue(&residual)
-                && !cleaned_parts.is_empty()
-            {
-                cleaned_parts.pop();
-                format!("{} {}", last_source, residual)
-            } else {
-                residual
-            };
-            let cleaned_residual =
-                crate::pipeline::model_pass::clean_text_with_settings(settings, plan, &residual)
-                    .await?;
-            cleaned_parts.push(cleaned_residual);
-        }
-
-        let mut out = String::new();
-        for part in cleaned_parts {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            if !out.is_empty() {
-                out.push(' ');
-            }
-            out.push_str(part);
-        }
-        if out.trim().is_empty() {
-            return None;
-        }
-        info!(
-            "incremental cleanup: reused {} pre-cleaned chars, final call covered {} chars",
-            consumed,
-            final_llm_input.len() - consumed
-        );
-        Some(out)
     }
 }
 
@@ -1485,6 +1653,78 @@ mod tests {
     }
 
     #[test]
+    fn a_resolved_self_correction_is_accepted() {
+        use super::drops_content;
+        // The regression that pasted raw transcripts back: resolving a
+        // correction deletes most of the sentence, which a volume-based guard
+        // read as data loss. Every deleted span here sits against "No",
+        // "actually", or "not", so the speaker retracted it.
+        let spoken = "So, do you want to go get like a co get coffee at like 7PM. No, actually no, no, Let's go get tea at like 10AM at like South Barcelona No, no, not South Barcelona in France. Thank you very much.";
+        let resolved =
+            "So, do you want to go get tea at 10AM in South Barcelona? Thank you very much.";
+        assert!(!drops_content(spoken, resolved));
+
+        // Collapsing stutters and discourse junk removes many words but loses
+        // no information: every word it drops is either filler or still
+        // present elsewhere in the reply.
+        let rambling = "You're like, I don't know what's going on with like the shit bro, like, you know what I'm saying? Like, hey, I thought that kind of funny, like, dog like you know what I'm saying So, yeah, I I don't I don't know bro.";
+        let tidied = "I don't know what's going on with this. I thought that was kind of funny. I don't know.";
+        assert!(!drops_content(rambling, tidied));
+
+        // Rewriting a number into digits is normalization, not deletion. This
+        // rejected a good cleanup: "three point zero point one" vanished from
+        // the reply as five separate words while the value was still there.
+        assert!(!drops_content(
+            "could we push it to the public Vaporly repo and mark it as version three point zero point one",
+            "Could we push it to the public Vaporly repo and mark it as version 3.0.1?"
+        ));
+
+        // ...but the excuse needs figures to point at. Losing the amount
+        // itself is still a loss, however number-shaped the missing words are.
+        assert!(drops_content(
+            "please wire five hundred and twenty dollars to the builder tomorrow morning",
+            "Please wire to the builder tomorrow morning."
+        ));
+
+        // A shorter cued correction resolves too.
+        assert!(!drops_content(
+            "send it to John, no wait, Joan",
+            "Send it to Joan."
+        ));
+        assert!(!drops_content(
+            "we need five copies, actually make that six",
+            "We need six copies."
+        ));
+    }
+
+    #[test]
+    fn a_reply_that_drops_a_sentence_is_rejected() {
+        use super::drops_content;
+        // The real failure: the model returned a clean-looking reply that had
+        // quietly deleted one whole sentence. Every other guard passed it.
+        let spoken = "Vaporly need to be way more consistent. That's something that definitely has to happen. And another thing that should happen is that this should be way faster. It should be like basically instant if possible. Like the processing afterwards, but mainly the main thing that must happen is that it must be 100% accurate first. We're aiming for accuracy. Speed is secondary.";
+        let lossy = "Vaporly needs to be way more consistent. That's something that definitely has to happen. And another thing that should happen is that this should be way faster. It should be basically instant if possible. We're aiming for accuracy. Speed is secondary.";
+        assert!(drops_content(spoken, lossy));
+
+        // A legitimate cleanup only removes fillers and a self-correction, so
+        // it must still be accepted.
+        let raw = "um so the meeting is at eight no wait nine and we should uh tell the team about it today";
+        let cleaned = "So the meeting is at nine and we should tell the team about it today.";
+        assert!(!drops_content(raw, cleaned));
+
+        // Unchanged text is never lossy; an empty input cannot lose anything.
+        assert!(!drops_content("hello there", "Hello there."));
+        assert!(!drops_content("", ""));
+
+        // A reply that keeps the overall ratio but deletes a whole clause is
+        // still caught by the contiguous-run check.
+        let long = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon";
+        let gutted =
+            "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron";
+        assert!(drops_content(long, gutted));
+    }
+
+    #[test]
     fn engine_warms_exactly_when_the_dictation_will_use_it() {
         use crate::settings::{ContextMode, StageEngine};
 
@@ -1631,101 +1871,6 @@ mod verbatim_shortcircuit_tests {
         let mut s = settings_with_template();
         s.custom_phrases[0].write = "   ".to_string();
         assert!(!matches_phrase(&s, ""));
-    }
-}
-
-#[cfg(test)]
-mod live_cleaner_tests {
-    use super::*;
-
-    fn cleaner_with(chunks: Vec<CleanedChunk>) -> LiveCleaner {
-        LiveCleaner {
-            stop: Default::default(),
-            state: std::sync::Arc::new(std::sync::Mutex::new(CleanerState {
-                chunks,
-                busy: false,
-            })),
-        }
-    }
-
-    fn chunk(source: &str, src_prefix: &str, cleaned: &str) -> CleanedChunk {
-        CleanedChunk {
-            source: source.to_string(),
-            src_prefix: src_prefix.to_string(),
-            cleaned: cleaned.to_string(),
-        }
-    }
-
-    fn stitch_now(c: &LiveCleaner, final_input: &str) -> Option<String> {
-        // Settings and the plan are only consulted for the residual LLM call;
-        // these cases have no residual (or no binding), so stand-ins are fine.
-        let settings = crate::settings::get_default_settings();
-        let plan = crate::pipeline::model_pass::ModelPlan {
-            system_prompt: String::new(),
-            protected_writes: Vec::new(),
-        };
-        tauri::async_runtime::block_on(c.stitch(final_input, &settings, &plan))
-    }
-
-    #[test]
-    fn stitch_reuses_fully_bound_chunks() {
-        let c = cleaner_with(vec![
-            chunk("first sentence.", "first sentence.", "First sentence."),
-            chunk(
-                "second one here.",
-                "first sentence. second one here.",
-                "Second one here.",
-            ),
-        ]);
-        let out = stitch_now(&c, "first sentence. second one here.");
-        assert_eq!(out.as_deref(), Some("First sentence. Second one here."));
-    }
-
-    #[test]
-    fn stitch_rejects_rewritten_history() {
-        let c = cleaner_with(vec![chunk(
-            "first sentence.",
-            "first sentence.",
-            "First sentence.",
-        )]);
-        // The batch fallback produced different text: nothing binds.
-        assert_eq!(stitch_now(&c, "a different transcription entirely."), None);
-    }
-
-    #[test]
-    fn stitch_binds_longest_matching_prefix() {
-        let c = cleaner_with(vec![
-            chunk("alpha.", "alpha.", "Alpha."),
-            chunk("beta.", "alpha. beta.", "Beta."),
-            chunk("gamma.", "alpha. beta. gamma.", "Gamma."),
-        ]);
-        // Final input matches only through the second chunk (the third was
-        // never spoken in the final take): reuse exactly those two.
-        let out = stitch_now(&c, "alpha. beta.");
-        assert_eq!(out.as_deref(), Some("Alpha. Beta."));
-    }
-
-    #[test]
-    fn stitch_with_no_chunks_returns_none() {
-        let c = cleaner_with(vec![]);
-        assert_eq!(stitch_now(&c, "anything at all."), None);
-    }
-
-    #[test]
-    fn stitch_reuses_a_cue_glued_joint_chunk_at_holdback_zero() {
-        // Holdback 0 cleans "send it to john." the moment its terminator
-        // arrives; the correction then completes as its own sentence, so the
-        // tick pops the chunk and re-cleans the PAIR jointly (re-emitting
-        // the same index toward the injector). What stitch sees afterwards
-        // is one joint chunk whose src_prefix covers both sentences; it must
-        // bind and be reused with zero residual.
-        let c = cleaner_with(vec![chunk(
-            "send it to john. no wait, joan.",
-            "send it to john. no wait, joan.",
-            "Send it to Joan.",
-        )]);
-        let out = stitch_now(&c, "send it to john. no wait, joan.");
-        assert_eq!(out.as_deref(), Some("Send it to Joan."));
     }
 }
 

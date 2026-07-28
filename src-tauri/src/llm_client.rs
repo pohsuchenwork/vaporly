@@ -63,6 +63,11 @@ struct ChatCompletionResponse {
 #[derive(Debug, Deserialize)]
 struct ChatChoice {
     message: ChatMessageResponse,
+    /// Why generation stopped. "length" means the reply hit the token budget
+    /// and was cut off mid-thought; pasting it would silently lose the tail,
+    /// so the caller rejects it and keeps the deterministic text.
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -294,10 +299,18 @@ pub async fn send_chat_completion_with_schema(
         .await
         .map_err(|e| format!("Failed to parse API response: {}", e))?;
 
-    Ok(completion
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.clone()))
+    let choice = match completion.choices.first() {
+        Some(choice) => choice,
+        None => return Ok(None),
+    };
+    // A reply cut off at the token budget is missing its tail. Returning None
+    // sends the caller to the deterministic text (all the spoken words) rather
+    // than pasting a sentence that stops mid-word.
+    if choice.finish_reason.as_deref() == Some("length") {
+        log::warn!("cleanup reply hit the token limit and was truncated; discarding it");
+        return Ok(None);
+    }
+    Ok(choice.message.content.clone())
 }
 
 #[cfg(test)]

@@ -178,25 +178,17 @@ mod tests {
         let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::Code)));
         assert!(cfg.rules().skip_itn);
         assert!(cfg.rules().skip_caps);
+        // Round 27: chat, notes, and browser are all one flat block, so they
+        // resolve to the default rules. Email is the only reshaping category.
         let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::Chat)));
-        // Round 23: chat keeps full punctuation; its distinguishing rule is
-        // the paragraph structure.
         assert!(!cfg.rules().drop_final_terminal_period);
+        assert_eq!(cfg.rules(), CategoryRules::default());
+        let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::Notes)));
+        assert_eq!(cfg.rules(), CategoryRules::default());
+        let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::Email)));
         assert_eq!(
             cfg.rules().structure,
-            crate::pipeline::context_rules::Structure::Paragraphs { max_sentences: 2 }
-        );
-        // Notes carries only the round-21 paragraph structure; every
-        // suppress flag stays default. General is fully default.
-        let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::Notes)));
-        assert_eq!(
-            cfg.rules(),
-            CategoryRules {
-                structure: crate::pipeline::context_rules::Structure::Paragraphs {
-                    max_sentences: 4
-                },
-                ..CategoryRules::default()
-            }
+            crate::pipeline::context_rules::Structure::Email
         );
         let cfg = StageConfig::from_settings(&s, false, false, Some(&ctx(CategoryId::General)));
         assert_eq!(cfg.rules(), CategoryRules::default());

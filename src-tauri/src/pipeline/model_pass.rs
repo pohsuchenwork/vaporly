@@ -57,7 +57,10 @@ const FILLER_HIGH: &str = "Fillers: remove leftover hesitation fillers (um, uh, 
 
 const MIND_CHANGE_LIGHT: &str = "Self-corrections: apply only explicit retractions (scratch that, strike that, no wait, delete that): keep the final version, delete the earlier attempt and the cue.";
 /// Appended to the Medium job text (`prompts::MIND_CHANGE_MEDIUM_JOB`) at High.
-const MIND_CHANGE_HIGH_EXTRA: &str = "Also resolve implied corrections where the speaker restates a detail with a new value; keep the latest value.";
+/// Scoped deliberately tight: the older wording ("restates a detail") was open
+/// enough that a 7B read a whole clause as the "detail" and deleted a sentence
+/// the speaker meant to keep.
+const MIND_CHANGE_HIGH_EXTRA: &str = "Also handle corrections with NO cue word, where the speaker simply repeats one detail (a name, number, date, or time) with a new value: keep the latest value. For these cue-less cases drop only that one value, never a whole clause; corrections that do have a cue word are covered above and delete the earlier attempt in full.";
 
 /// Resolved through `context::apply_app_context`, the one sanitizing
 /// substitution point, so a hostile app name cannot fake a new prompt section.
@@ -69,7 +72,18 @@ const KEEP_SPELLINGS_PREFIX: &str = "Keep these spellings exactly: ";
 /// sees the inert sentinel shape.
 const PROTECTED_TOKENS_LINE: &str =
     "Placeholders like [[P1]] are protected tokens. Keep each one exactly where it is, unchanged.";
-const TAIL: &str = "Never use em or en dashes. Return ONLY the cleaned text, nothing else.";
+/// Always included. The recognizer punctuates on pauses, not on grammar, so it
+/// drops full stops mid-thought ("That's. Something that has to happen.") and
+/// runs separate thoughts together. Judging each sentence on its own can never
+/// repair that, so the model is told to read the transcript whole.
+const SENTENCE_REPAIR_JOB: &str = "Sentence boundaries: read the whole transcript as one continuous piece of speech. The full stops came from pauses, not grammar, so ignore them when judging meaning. Join fragments that a stray full stop split apart, and split a run-on where a new thought clearly starts, without adding or removing any words.";
+
+/// Always last. The preservation clause is load-bearing, but it must be
+/// scoped to what the numbered jobs do NOT cover: an unqualified "keep
+/// everything, when in doubt return it unchanged" contradicts the
+/// self-correction job outright and pushes the model to leave every retracted
+/// false start in place.
+const TAIL: &str = "Do the numbered jobs above and change nothing else: never summarize, condense, rewrite, or leave out anything the jobs do not tell you to remove. Never use em or en dashes. Return ONLY the cleaned text, nothing else.";
 
 fn filler_job(cfg: &StageConfig) -> Option<&'static str> {
     if cfg.filler_engine != StageEngine::Model {
@@ -138,17 +152,22 @@ fn protected_writes(cfg: &StageConfig) -> Vec<String> {
 /// feature needs the model: the orchestrator then never starts a LiveCleaner,
 /// never waits on the engine, and pastes the deterministic text as final.
 pub fn build_model_plan(cfg: &StageConfig) -> Option<ModelPlan> {
-    let jobs: Vec<String> = [
-        filler_job(cfg).map(str::to_string),
-        mind_change_job(cfg),
-        // LAST among jobs (prefix-cache stability across target apps).
-        context_job(cfg.context.as_ref()),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
-    if jobs.is_empty() {
+    let feature_jobs: Vec<String> = [filler_job(cfg).map(str::to_string), mind_change_job(cfg)]
+        .into_iter()
+        .flatten()
+        .collect();
+    let context_job = context_job(cfg.context.as_ref());
+    // No feature needs the model: no plan, so an all-deterministic setup still
+    // never starts the engine. Sentence repair rides along with a plan that
+    // already exists; it never creates one on its own.
+    if feature_jobs.is_empty() && context_job.is_none() {
         return None;
+    }
+    let mut jobs = feature_jobs;
+    jobs.push(SENTENCE_REPAIR_JOB.to_string());
+    if let Some(job) = context_job {
+        // LAST among jobs (prefix-cache stability across target apps).
+        jobs.push(job);
     }
     let protected_writes = protected_writes(cfg);
 
@@ -424,8 +443,10 @@ pub(crate) async fn clean_text_with_settings(
     // Reasoning off: cleanup never benefits from it on the local engine. The
     // per-session bearer token is injected downstream by llm_client (empty
     // api_key here). No JSON schema: grammar-constrained decoding measurably
-    // degrades a small model's free-text quality, and the empty-reply and
-    // over_collapsed guards already make plain text robust.
+    // degrades a small model's free-text quality. Plain text is made safe by
+    // the caller's guard stack instead - empty, over-collapsed, conversational,
+    // truncated, and (the one that was missing) content-dropping replies are
+    // all rejected in favour of the deterministic text.
     match crate::llm_client::send_chat_completion_with_schema(
         &provider,
         String::new(),
@@ -440,6 +461,12 @@ pub(crate) async fn clean_text_with_settings(
     {
         Ok(Some(content)) => {
             let out = strip_invisible_chars(&content).trim().to_string();
+            // An empty reply carries no words at all; never let it reach a
+            // caller that might store or paste it.
+            if out.is_empty() {
+                warn!("model reply was empty; keeping the deterministic text");
+                return None;
+            }
             match &protected {
                 // Anomalous sentinels (dropped, duplicated, invented) decode
                 // to None: the caller keeps the deterministic text, which
@@ -525,7 +552,23 @@ mod tests {
         let p = prompt_for(&s, None).unwrap();
         assert!(p.contains(&format!("1. {}", crate::prompts::MIND_CHANGE_MEDIUM_JOB)));
         assert!(p.contains(MIND_CHANGE_HIGH_EXTRA));
-        assert!(!p.contains("\n\n2. "), "mind-change is the ONLY job: {p}");
+        // Sentence repair always rides along with a plan that already exists.
+        assert!(p.contains(&format!("2. {SENTENCE_REPAIR_JOB}")));
+        assert!(!p.contains("\n\n3. "), "no third job without context: {p}");
+    }
+
+    #[test]
+    fn sentence_repair_rides_along_but_never_creates_a_plan() {
+        // It must not turn an all-deterministic setup into one that starts the
+        // engine: no feature job, no plan, even though repair is "always on".
+        let s = all_det_settings();
+        assert_eq!(prompt_for(&s, None), None);
+        // With any model stage on, it is present.
+        let mut s = all_det_settings();
+        s.filler_engine = StageEngine::Model;
+        s.filler_level = FeatureLevel::Medium;
+        let p = prompt_for(&s, None).unwrap();
+        assert!(p.contains(SENTENCE_REPAIR_JOB));
     }
 
     #[test]
@@ -588,32 +631,37 @@ mod tests {
             assert!(p.starts_with(HEADER), "header first: {p}");
             let f = p.find("1. Fillers:").expect("filler job first");
             let m = p.find("2. Self-corrections:").expect("mind-change second");
+            let r = p
+                .find("3. Sentence boundaries:")
+                .expect("sentence repair after the feature jobs");
             let c = p
-                .find("3. The text will be inserted into Slack, instant messaging")
+                .find("4. The text will be inserted into Slack, instant messaging")
                 .expect("context job last among jobs");
-            assert!(f < m && m < c);
+            assert!(f < m && m < r && r < c);
             assert!(p.ends_with(TAIL), "tail last: {p}");
         }
     }
 
     #[test]
     fn jobs_renumber_by_present_blocks() {
-        // Mind-change alone is job 1.
+        // Mind-change alone is job 1; sentence repair always follows it.
         let mut s = get_default_settings();
         s.mind_change_engine = StageEngine::Model;
         let p = prompt_for(&s, None).unwrap();
         assert!(p.contains("1. Self-corrections:"));
-        assert!(!p.contains("\n\n2. "));
+        assert!(p.contains("2. Sentence boundaries:"));
+        assert!(!p.contains("\n\n3. "));
 
-        // Filler + context: context renumbers to 2 (mind-change pinned
-        // Deterministic so exactly two jobs compose).
+        // Filler + context: repair sits between them, so context renumbers to
+        // 3 (mind-change pinned Deterministic so no fourth job composes).
         let mut s = all_det_settings();
         s.filler_engine = StageEngine::Model;
         s.context_awareness.mode = ContextMode::Model;
         let p = prompt_for(&s, Some(&test_ctx(CategoryId::General, "SomeApp"))).unwrap();
         assert!(p.contains("1. Fillers:"));
-        assert!(p.contains("2. The text will be inserted into SomeApp, general text field"));
-        assert!(!p.contains("\n\n3. "));
+        assert!(p.contains("2. Sentence boundaries:"));
+        assert!(p.contains("3. The text will be inserted into SomeApp, general text field"));
+        assert!(!p.contains("\n\n4. "));
     }
 
     #[test]
@@ -643,7 +691,8 @@ mod tests {
         for mode in [ContextMode::Model, ContextMode::Both] {
             s.context_awareness.mode = mode;
             let p = prompt_for(&s, Some(&test_ctx(CategoryId::Chat, "Slack"))).unwrap();
-            assert!(p.contains("1. The text will be inserted into Slack, instant messaging"));
+            // Sentence repair takes slot 1 when context is the only feature.
+            assert!(p.contains("2. The text will be inserted into Slack, instant messaging"));
         }
     }
 
@@ -656,9 +705,7 @@ mod tests {
 
         s.custom_words = vec!["Kubernetes".to_string(), "GGUF".to_string()];
         let p = prompt_for(&s, None).unwrap();
-        assert!(p.contains(
-            "Keep these spellings exactly: Kubernetes, GGUF. Never use em or en dashes."
-        ));
+        assert!(p.contains("Keep these spellings exactly: Kubernetes, GGUF. Do the numbered jobs"));
     }
 
     #[test]
@@ -671,7 +718,7 @@ mod tests {
         s.custom_words = vec!["Kubernetes".to_string(), "GGUF".to_string()];
         let p = prompt_for(&s, Some(&test_ctx(CategoryId::Notes, "TextEdit"))).unwrap();
         let expected = format!(
-            "{HEADER}\n\n1. {FILLER_MEDIUM}\n\n2. {}\n\n3. The text will be inserted into TextEdit, notes or document editor (use well-structured prose); match the conventions customary there without changing what was said.\n\nKeep these spellings exactly: Kubernetes, GGUF. {TAIL}",
+            "{HEADER}\n\n1. {FILLER_MEDIUM}\n\n2. {}\n\n3. {SENTENCE_REPAIR_JOB}\n\n4. The text will be inserted into TextEdit, notes or document editor (use well-structured prose); match the conventions customary there without changing what was said.\n\nKeep these spellings exactly: Kubernetes, GGUF. {TAIL}",
             crate::prompts::MIND_CHANGE_MEDIUM_JOB
         );
         assert_eq!(p, expected);

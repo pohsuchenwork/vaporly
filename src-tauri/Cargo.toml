@@ -1,6 +1,6 @@
 [package]
 name = "vaporly"
-version = "3.0.0"
+version = "3.0.1"
 description = "Fully local dictation for macOS, Windows, and Linux"
 authors = ["Po-Hsu Chen"]
 edition = "2021"
