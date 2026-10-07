@@ -8,8 +8,11 @@ on:
 
 jobs:
   build:
+    # Read only, and no secrets: this run is unsigned and publishes nothing.
+    # build.yml reads repository secrets only in steps gated on sign-binaries
+    # or sign-updater, and both stay false here, so none are passed in.
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -27,7 +30,6 @@ jobs:
             args: "--config src-tauri/unsigned.tauri.conf.json"
             target: "x86_64-pc-windows-msvc"
     uses: ./.github/workflows/build.yml
-    secrets: inherit
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}

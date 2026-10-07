@@ -7,9 +7,8 @@
 # Usage:
 #   curl -fsSL https://github.com/pohsuchenwork/vaporly/releases/latest/download/install.sh | bash
 #
-# Note: while the repository is private these download URLs need a GitHub login.
-# They become anonymous once the repo is public. Until then, download the app
-# from the Releases page by hand.
+# The repository is public, so these download URLs need no GitHub login. The
+# Releases page has the same files for a manual download.
 set -euo pipefail
 
 REPO="pohsuchenwork/vaporly"

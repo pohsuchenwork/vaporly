@@ -65,8 +65,11 @@ env:
 
 jobs:
   build:
+    # Read only: no caller passes release-id, so nothing in this job writes to
+    # the repository or to a release (workflow artifacts need no token scope).
+    # release.yml's publish job is the only job with contents: write.
     permissions:
-      contents: write
+      contents: read
     runs-on: ${{ inputs.platform }}
     steps:
       - name: Enable long paths (Windows)
@@ -78,11 +81,12 @@ jobs:
           git config --system core.longpaths true
 
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           repository: ${{ inputs.repository }}
           ref: ${{ inputs.ref }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Get version from tauri.conf.json
         id: get-version
@@ -105,10 +109,17 @@ jobs:
           fi
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          # An exact version (the one the last good release build used), so a
+          # new Bun release cannot change a build without a commit here.
+          bun-version: "1.3.14"
+          # Release builds (no-cache: true) download Bun fresh instead of
+          # restoring a cached executable.
+          no-cache: ${{ inputs.no-cache }}
 
       - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
           # Those targets are only used on macos runners so it's in an `if` to slightly speed up windows and linux builds.
           targets: ${{ contains(inputs.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
@@ -118,7 +129,7 @@ jobs:
         # always compiled clean, no risk of a stale cached native lib being
         # linked. PR/test builds keep caching for speed.
         if: ${{ !inputs.no-cache }}
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: "./src-tauri -> target"
           key: ${{ inputs.platform }}-${{ inputs.target }}
@@ -158,15 +169,18 @@ jobs:
       # built there and no Vulkan SDK, headers, or glslc are needed.
       - name: Install Vulkan SDK (Windows x64)
         if: contains(inputs.platform, 'windows') && !contains(inputs.target, 'aarch64')
-        uses: humbletim/install-vulkan-sdk@v1.2
+        uses: humbletim/install-vulkan-sdk@30ba978f977e81b72d091fc8888feb1fb26f9aff # v1.2
         with:
           version: 1.4.309.0
-          cache: true
+          # Release builds (no-cache: true) download the SDK fresh.
+          cache: ${{ !inputs.no-cache }}
 
+      # Release builds (no-cache: true) skip this cache, so the install step
+      # below always builds trusted-signing-cli fresh for them.
       - name: Cache trusted-signing-cli
-        if: contains(inputs.platform, 'windows') && inputs.sign-binaries
+        if: contains(inputs.platform, 'windows') && inputs.sign-binaries && !inputs.no-cache
         id: cache-tsc
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: ~/.cargo/bin/trusted-signing-cli*
           key: trusted-signing-cli-${{ env.TSC_VERSION }}-${{ runner.os }}-${{ runner.arch }}
@@ -186,10 +200,11 @@ jobs:
 
       - name: Prepare Vulkan SDK for Ubuntu ARM64
         if: contains(inputs.platform, 'ubuntu') && contains(inputs.platform, 'arm')
-        uses: jakoch/install-vulkan-sdk-action@v1
+        uses: jakoch/install-vulkan-sdk-action@37effcfa045411f8bfbbda26df2fd1b3bf3436fa # v1.6.0
         with:
           vulkan_version: 1.4.335.0
-          cache: true
+          # Release builds (no-cache: true) download the SDK fresh.
+          cache: ${{ !inputs.no-cache }}
 
       - name: Install Vulkan runtime libraries (Ubuntu ARM64)
         if: contains(inputs.platform, 'ubuntu') && contains(inputs.platform, 'arm')
@@ -206,13 +221,15 @@ jobs:
           sudo apt install vulkan-sdk -y
           sudo apt-get install -y mesa-vulkan-drivers
 
+      # --frozen-lockfile: install exactly what bun.lock pins, and fail rather
+      # than resolve anything new.
       - name: install frontend dependencies
         if: ${{ !(contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64')) }}
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: install frontend dependencies (Windows ARM64)
         if: ${{ contains(inputs.platform, 'windows') && contains(inputs.target, 'aarch64') }}
-        run: bun install --cpu=arm64
+        run: bun install --frozen-lockfile --cpu=arm64
 
       - name: Stage llama-server engine payload
         shell: bash
@@ -342,7 +359,21 @@ jobs:
         shell: bash
         run: |
           ORT_VERSION="1.24.2"
-          curl -L -o ort.tgz "https://blob.handy.computer/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          # blob.handy.computer publishes no digest for this tarball (Microsoft
+          # ships no Intel Mac build of 1.24.2), so its SHA-256 was computed once
+          # from a reviewed download, whose MD5 matched the server's ETag, and is
+          # pinned here. Upgrading: bump ORT_VERSION and pin the new tarball's
+          # SHA-256 the same way.
+          ORT_SHA256="590cee05699047b85e4a8115b4cec792073c2972ce78de383356a552a296a9c4"
+          curl -fsSL --retry 3 -o ort.tgz "https://blob.handy.computer/onnxruntime-osx-x86_64-${ORT_VERSION}.tgz"
+          GOT_SHA="$(shasum -a 256 ort.tgz | awk '{print $1}')"
+          if [ "$GOT_SHA" != "$ORT_SHA256" ]; then
+            echo "ERROR: SHA256 mismatch for onnxruntime-osx-x86_64-${ORT_VERSION}.tgz" >&2
+            echo "  want: $ORT_SHA256" >&2
+            echo "  got:  $GOT_SHA" >&2
+            exit 1
+          fi
+          echo "SHA256 verified."
           tar xzf ort.tgz
           ORT_DIR="$(pwd)/onnxruntime-osx-x86_64-${ORT_VERSION}"
           echo "ORT_LIB_LOCATION=$ORT_DIR/lib" >> $GITHUB_ENV
@@ -394,8 +425,17 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $ORT_VERSION = "1.24.2"
+          # SHA-256 GitHub publishes for this release asset (gh api
+          # repos/microsoft/onnxruntime/releases/tags/v1.24.2, field digest).
+          # Upgrading: bump ORT_VERSION and refresh this digest the same way.
+          $ORT_SHA256 = "8e3e9c826375352e29cb2614fe44f3d7a4b0ff7b8028ad7a456af9d949a7e8b0"
           $url = "https://github.com/microsoft/onnxruntime/releases/download/v$ORT_VERSION/onnxruntime-win-x64-$ORT_VERSION.zip"
           Invoke-WebRequest -Uri $url -OutFile ort.zip
+          $gotSha = (Get-FileHash -Algorithm SHA256 -Path ort.zip).Hash.ToLowerInvariant()
+          if ($gotSha -ne $ORT_SHA256) {
+            throw "SHA256 mismatch for onnxruntime-win-x64-$ORT_VERSION.zip: want $ORT_SHA256, got $gotSha"
+          }
+          Write-Host "SHA256 verified."
           Expand-Archive -Path ort.zip -DestinationPath ort-dist -Force
           $ortLib = (Resolve-Path "ort-dist/onnxruntime-win-x64-$ORT_VERSION/lib").Path
           Write-Host "ORT_LIB_LOCATION=$ortLib"
@@ -533,9 +573,12 @@ jobs:
           fi
 
       - name: Build with Tauri
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # tauri-action reads GITHUB_TOKEN only to create or upload to a
+          # release (tagName/releaseId), which happens only when release-id is
+          # set. No caller sets it, so the build itself gets an empty token.
+          GITHUB_TOKEN: ${{ inputs.release-id && secrets.GITHUB_TOKEN || '' }}
           # Signing env is exported by the "Export signing environment" step
           # only when sign-binaries is true. Setting these keys here, even as
           # empty strings, makes tauri-bundler's presence checks (e.g.
@@ -547,6 +590,25 @@ jobs:
           releaseId: ${{ inputs.release-id }}
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           args: ${{ inputs.build-args }}
+
+      # Nothing after the build may see the signing keys. The two export steps
+      # above put them in GITHUB_ENV, where every later step (the artifact
+      # uploads, the AppImage repack and the tool it downloads, the post-job
+      # steps) would inherit them. GITHUB_ENV cannot unset a variable, so set
+      # each one empty; nothing after the build runs the bundler, so the empty
+      # values are harmless. always() keeps a failed build from leaving the
+      # keys to the post-job steps. The AppImage re-sign step below gets the
+      # updater key through its own env, which wins over GITHUB_ENV.
+      - name: Clear signing environment
+        if: always() && (inputs.sign-updater || inputs.sign-binaries)
+        shell: bash
+        run: |
+          for name in TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD \
+            APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+            APPLE_ID APPLE_ID_PASSWORD APPLE_PASSWORD APPLE_TEAM_ID \
+            AZURE_CLIENT_ID AZURE_CLIENT_SECRET AZURE_TENANT_ID; do
+            echo "${name}=" >> "$GITHUB_ENV"
+          done
 
       - name: Verify macOS dylib bundling
         if: inputs.target == 'x86_64-apple-darwin'
@@ -571,7 +633,7 @@ jobs:
 
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |
@@ -638,19 +700,98 @@ jobs:
               APPIMAGETOOL_ARCH="x86_64"
             fi
 
-            wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
+            # appimagetool and the AppImage runtime it embeds both come from
+            # FIXED releases of the maintained AppImage projects, each checked
+            # against the SHA-256 GitHub publishes for the asset (gh api
+            # repos/AppImage/<repo>/releases/tags/<tag>, field digest). The old
+            # AppImageKit "continuous" build was mutable and unchecked, and
+            # appimagetool would otherwise fetch the mutable type2-runtime
+            # "continuous" build at pack time, so the runtime is pinned too and
+            # passed with --runtime-file. Upgrading: bump the tags and refresh
+            # all four digests the same way.
+            APPIMAGETOOL_TAG="1.9.1"
+            RUNTIME_TAG="20251108"
+            case "$APPIMAGETOOL_ARCH" in
+              x86_64)
+                APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+                RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+                ;;
+              aarch64)
+                APPIMAGETOOL_SHA256="f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158"
+                RUNTIME_SHA256="00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444"
+                ;;
+            esac
+            fetch_checked() {
+              local url="$1" out="$2" want="$3" got
+              curl -fsSL --retry 3 -o "$out" "$url"
+              got="$(sha256sum "$out" | awk '{print $1}')"
+              if [ "$got" != "$want" ]; then
+                echo "ERROR: SHA256 mismatch for $out" >&2
+                echo "  want: $want" >&2
+                echo "  got:  $got" >&2
+                exit 1
+              fi
+              echo "SHA256 verified: $out"
+            }
+            fetch_checked "https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_TAG}/appimagetool-${APPIMAGETOOL_ARCH}.AppImage" \
+              "appimagetool-${APPIMAGETOOL_ARCH}.AppImage" "$APPIMAGETOOL_SHA256"
+            fetch_checked "https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_TAG}/runtime-${APPIMAGETOOL_ARCH}" \
+              "runtime-${APPIMAGETOOL_ARCH}" "$RUNTIME_SHA256"
             chmod +x "appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
 
             # Repackage AppImage with no-appstream to avoid warnings
-            ARCH="${APPIMAGETOOL_ARCH}" "./appimagetool-${APPIMAGETOOL_ARCH}.AppImage" --no-appstream squashfs-root "$APPIMAGE_NAME"
+            ARCH="${APPIMAGETOOL_ARCH}" "./appimagetool-${APPIMAGETOOL_ARCH}.AppImage" --no-appstream \
+              --runtime-file "runtime-${APPIMAGETOOL_ARCH}" squashfs-root "$APPIMAGE_NAME"
 
             # Clean up
-            rm -rf squashfs-root "appimagetool-${APPIMAGETOOL_ARCH}.AppImage"
+            rm -rf squashfs-root "appimagetool-${APPIMAGETOOL_ARCH}.AppImage" "runtime-${APPIMAGETOOL_ARCH}"
 
             echo "libwayland-client.so removed from AppImage successfully"
           else
             echo "No AppImage found to process"
           fi
+
+      # The repack above rewrites the AppImage after tauri-action signed it, so
+      # the .AppImage.sig the bundler wrote no longer matches the shipped file
+      # and the updater would reject it. Sign the repacked AppImage again with
+      # the project's own pinned Tauri CLI, which overwrites <file>.sig in
+      # place, so the upload below ships the new signature. The updater key
+      # reaches this step only, through its own env (a step's env wins over
+      # the emptied GITHUB_ENV values). An unset password variable would make
+      # the CLI prompt, so the password is always passed, empty when the key
+      # has none, which is what the bundler uses in CI too.
+      - name: Re-sign repacked AppImage (Linux)
+        if: contains(inputs.platform, 'ubuntu') && (inputs.sign-updater || inputs.sign-binaries)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # Strip any line break a pasted secret carries. The bundler got these
+          # values through GITHUB_ENV lines, which drop them too.
+          TAURI_SIGNING_PRIVATE_KEY="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | tr -d '\r\n')"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | tr -d '\r\n')"
+          export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "ERROR: no updater signing key; cannot re-sign the repacked AppImage" >&2
+            exit 1
+          fi
+          shopt -s nullglob
+          appimages=(src-tauri/target/${{ steps.build-profile.outputs.profile }}/bundle/appimage/*.AppImage)
+          if [ ${#appimages[@]} -eq 0 ]; then
+            echo "No AppImage to re-sign"
+            exit 0
+          fi
+          for appimage in "${appimages[@]}"; do
+            rm -f "${appimage}.sig"
+            bun run tauri signer sign "$appimage"
+            if [ ! -s "${appimage}.sig" ]; then
+              echo "ERROR: signing did not write ${appimage}.sig" >&2
+              exit 1
+            fi
+            echo "Re-signed: $appimage"
+          done
 
       - name: Audit Linux package runtime contents
         if: contains(inputs.platform, 'ubuntu')
@@ -760,7 +901,7 @@ jobs:
 
       - name: Upload artifacts (Linux)
         if: inputs.upload-artifacts && contains(inputs.platform, 'ubuntu')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.platform }}-${{ inputs.target }}
           path: |
@@ -866,7 +1007,7 @@ jobs:
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.asset-prefix }}-${{ inputs.target }}
           path: |
