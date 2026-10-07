@@ -3,8 +3,7 @@
 # Usage:
 #   powershell -c "irm https://github.com/pohsuchenwork/vaporly/releases/latest/download/install.ps1 | iex"
 #
-# Note: while the repository is private these downloads need a GitHub login.
-# They become anonymous once the repo is public.
+# The repository is public, so these downloads need no GitHub login.
 $ErrorActionPreference = "Stop"
 
 $Repo = "pohsuchenwork/vaporly"
