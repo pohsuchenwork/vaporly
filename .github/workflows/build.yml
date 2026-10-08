@@ -510,24 +510,17 @@ jobs:
           sudo ldconfig
 
       # Signing env must only EXIST when signing: tauri-bundler keys off the
-      # presence of APPLE_CERTIFICATE / TAURI_SIGNING_PRIVATE_KEY, so exporting
-      # them empty on unsigned builds breaks bundling (empty keychain import).
-      - name: Export updater signing key
-        # Minisign key for updater artifacts (.sig), independent of platform
-        # code signing so unsigned builds can still ship auto-updates.
-        if: inputs.sign-updater && !inputs.sign-binaries
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            {
-              echo "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY"
-              echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
-            } >> "$GITHUB_ENV"
-          fi
-
+      # presence of APPLE_CERTIFICATE, so exporting it empty on unsigned builds
+      # breaks bundling (empty keychain import).
+      #
+      # The updater key is never in the build's environment. Release builds run
+      # with createUpdaterArtifacts false (release.tauri.conf.json), so the
+      # bundler neither makes nor signs updater bundles, and every cargo build
+      # script, proc-macro, CMake and Vite step runs without the key. The
+      # bundles are made and signed after the build, in steps that get the key
+      # through their own env: "Make and sign the updater bundle (macOS)",
+      # "Re-sign repacked AppImage (Linux)" and "Sign the updater bundle
+      # (Windows)".
       - name: Export signing environment
         if: inputs.sign-binaries
         shell: bash
@@ -542,8 +535,6 @@ jobs:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           {
             echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
@@ -552,8 +543,6 @@ jobs:
             echo "AZURE_CLIENT_ID=$AZURE_CLIENT_ID"
             echo "AZURE_CLIENT_SECRET=$AZURE_CLIENT_SECRET"
             echo "AZURE_TENANT_ID=$AZURE_TENANT_ID"
-            echo "TAURI_SIGNING_PRIVATE_KEY=$TAURI_SIGNING_PRIVATE_KEY"
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
           } >> "$GITHUB_ENV"
           # Notarization only when an Apple ID is actually configured. A
           # self-signed stable build (no Apple Developer account) signs with a
@@ -591,14 +580,15 @@ jobs:
           assetNamePattern: ${{ steps.patch-release-name.outputs.platform }}
           args: ${{ inputs.build-args }}
 
-      # Nothing after the build may see the signing keys. The two export steps
-      # above put them in GITHUB_ENV, where every later step (the artifact
-      # uploads, the AppImage repack and the tool it downloads, the post-job
-      # steps) would inherit them. GITHUB_ENV cannot unset a variable, so set
-      # each one empty; nothing after the build runs the bundler, so the empty
-      # values are harmless. always() keeps a failed build from leaving the
-      # keys to the post-job steps. The AppImage re-sign step below gets the
-      # updater key through its own env, which wins over GITHUB_ENV.
+      # Nothing after the build may see the code-signing secrets. The export
+      # step above puts them in GITHUB_ENV (only when sign-binaries is on),
+      # where every later step (the artifact uploads, the AppImage repack and
+      # the tool it downloads, the post-job steps) would inherit them.
+      # GITHUB_ENV cannot unset a variable, so set each one empty; nothing after
+      # the build runs the bundler, so the empty values are harmless. always()
+      # keeps a failed build from leaving them to the post-job steps. The
+      # updater key never enters GITHUB_ENV: the signing steps below get it
+      # through their own env.
       - name: Clear signing environment
         if: always() && (inputs.sign-updater || inputs.sign-binaries)
         shell: bash
@@ -630,6 +620,43 @@ jobs:
               echo "OK: $libname"
             fi
           done
+
+      # The updater bundle the build no longer makes: the .app as the root of a
+      # gzip tarball, as tauri-bundler makes it, signed with the project's
+      # pinned Tauri CLI. COPYFILE_DISABLE and --no-mac-metadata keep macOS tar
+      # from adding AppleDouble entries the bundler's archive never had. The
+      # key reaches this step only, through its own env.
+      - name: Make and sign the updater bundle (macOS)
+        if: contains(inputs.platform, 'macos') && (inputs.sign-updater || inputs.sign-binaries)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TAURI_SIGNING_PRIVATE_KEY="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | tr -d '\r\n')"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | tr -d '\r\n')"
+          export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "ERROR: no updater signing key; cannot sign the updater bundle" >&2
+            exit 1
+          fi
+          dir="src-tauri/target/${{ inputs.target }}/${{ steps.build-profile.outputs.profile }}/bundle/macos"
+          shopt -s nullglob
+          apps=("$dir"/*.app)
+          if [ ${#apps[@]} -ne 1 ]; then
+            echo "ERROR: expected one .app in $dir, found ${#apps[@]}" >&2
+            exit 1
+          fi
+          name="$(basename "${apps[0]}")"
+          rm -f "${dir:?}/${name:?}.tar.gz" "${dir:?}/${name:?}.tar.gz.sig"
+          COPYFILE_DISABLE=1 tar --no-mac-metadata -czf "$dir/$name.tar.gz" -C "$dir" "$name"
+          bun run tauri signer sign "$dir/$name.tar.gz"
+          if [ ! -s "$dir/$name.tar.gz.sig" ]; then
+            echo "ERROR: signing did not write $name.tar.gz.sig" >&2
+            exit 1
+          fi
+          echo "Made and signed: $name.tar.gz"
 
       - name: Upload artifacts (macOS)
         if: inputs.upload-artifacts && contains(inputs.platform, 'macos')
@@ -784,7 +811,7 @@ jobs:
             exit 0
           fi
           for appimage in "${appimages[@]}"; do
-            rm -f "${appimage}.sig"
+            rm -f "${appimage:?}.sig"
             bun run tauri signer sign "$appimage"
             if [ ! -s "${appimage}.sig" ]; then
               echo "ERROR: signing did not write ${appimage}.sig" >&2
@@ -1004,6 +1031,41 @@ jobs:
             Assert-PackageContents -Root $installDir -Label "Installed MSI"
             Remove-Item -Recurse -Force $installDir
           }
+
+      # The Windows updater bundle is the NSIS installer itself; the build no
+      # longer signs it, so sign it here. The key reaches this step only,
+      # through its own env.
+      - name: Sign the updater bundle (Windows)
+        if: inputs.upload-artifacts && contains(inputs.platform, 'windows') && (inputs.sign-updater || inputs.sign-binaries)
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NSIS_DIR: ${{ steps.win-artifact-path.outputs.base }}/${{ inputs.target != '' && inputs.target != 'x86_64-pc-windows-msvc' && format('{0}/{1}', inputs.target, steps.build-profile.outputs.profile) || steps.build-profile.outputs.profile }}/bundle/nsis
+        run: |
+          set -euo pipefail
+          TAURI_SIGNING_PRIVATE_KEY="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" | tr -d '\r\n')"
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(printf '%s' "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" | tr -d '\r\n')"
+          export TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "ERROR: no updater signing key; cannot sign the updater bundle" >&2
+            exit 1
+          fi
+          # CARGO_TARGET_DIR can be a Windows path; a backslash in a bash glob is an escape.
+          NSIS_DIR="$(cygpath -u "$NSIS_DIR")"
+          shopt -s nullglob
+          setups=("$NSIS_DIR"/*-setup.exe)
+          if [ ${#setups[@]} -ne 1 ]; then
+            echo "ERROR: expected one -setup.exe in $NSIS_DIR, found ${#setups[@]}" >&2
+            exit 1
+          fi
+          rm -f "${setups[0]:?}.sig"
+          bun run tauri signer sign "${setups[0]}"
+          if [ ! -s "${setups[0]}.sig" ]; then
+            echo "ERROR: signing did not write $(basename "${setups[0]}").sig" >&2
+            exit 1
+          fi
+          echo "Signed: $(basename "${setups[0]}")"
 
       - name: Upload artifacts (Windows)
         if: inputs.upload-artifacts && contains(inputs.platform, 'windows')
