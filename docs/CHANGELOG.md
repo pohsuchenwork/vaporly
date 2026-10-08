@@ -13,7 +13,7 @@ with numbers written the way people write them.
 
 - The AI cleanup can no longer quietly delete part of what you dictated. Every
   reply is checked against your actual words, and anything that lost a
-  sentence, a clause, or a meaningful phrase is thrown away in favour of the
+  sentence, a clause, or a meaningful phrase is thrown away in favor of the
   text you spoke. A reply that comes back empty, or that was cut off part-way,
   is discarded the same way.
 - Cleanup now reads the whole dictation at once instead of one sentence at a
@@ -26,7 +26,7 @@ with numbers written the way people write them.
   replace the one detail you corrected rather than a whole sentence.
 - Changing your mind works again. The new check was at first rejecting the very
   corrections it was meant to allow, so "coffee at 7, no, actually tea at 10"
-  came back with both halves still in it. Text you took back is now recognised
+  came back with both halves still in it. Text you took back is now recognized
   by the correction words around it and removed as you intended.
 - Tidying up is no longer mistaken for losing something. The check asks whether
   any information disappeared rather than how many words did, so collapsing a
