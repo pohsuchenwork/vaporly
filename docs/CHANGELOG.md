@@ -16,6 +16,8 @@ and are not documented here.
 - The app framework moves from Tauri 2.10 to 2.12. The custom fix Vaporly
   carried for where windows sit on macOS is now part of Tauri itself.
 - zod moves to 4.6.7. The app's code doesn't use it.
+- The Linux build's OpenSSL bindings move to 0.10.82, which fixes eight reported
+  flaws, and two build-time libraries (serde_with, rand) move to fixed versions.
 
 ## 3.0.1 (2026-07-28)
 
