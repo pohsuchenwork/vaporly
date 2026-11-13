@@ -94,7 +94,7 @@ libc = "0.2"
 tauri-plugin-autostart = "2.5.1"
 tauri-plugin-global-shortcut = "2.3.1"
 tauri-plugin-single-instance = "2.3.2"
-tauri-plugin-updater = "2.10.0"
+tauri-plugin-updater = "2.14.1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.61.3", features = [
@@ -142,10 +142,14 @@ transcribe-cpp = { version = "0.1.0", default-features = false, features = [
   "vulkan",
 ] }
 
-[patch.crates-io]
-tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
-tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
-tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
+# The handy-2.10.2 patch below is off since Tauri 2.12 (Nov 2026: tauri-plugin-updater 2.14.1, which takes zip 9.5.1
+# for the zip advisories, needs Tauri 2.12). Its one runtime change, the macOS work_area y position, is in upstream
+# tauri-runtime-wry 2.12.3 (in a more general form that also counts the screen's own origin, for second monitors). Its
+# AppImage symlink change is in tauri-bundler, which the CLI runs, so this patch never reached it. Kept for reference.
+# [patch.crates-io]
+# tauri-runtime = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
+# tauri-runtime-wry = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
+# tauri-utils = { git = "https://github.com/cjpais/tauri.git", branch = "handy-2.10.2" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -4,6 +4,19 @@ All notable changes to Vaporly are documented here. Vaporly 3.0.0 is the first
 official public release; earlier versions were development and pre-release builds
 and are not documented here.
 
+## Unreleased
+
+### Security updates
+
+- The built-in updater now uses version 9.5.1 of its zip library, which fixes
+  three reported flaws in how zip files are read. Updates were already checked
+  against Vaporly's signature before anything was unpacked, and the updater
+  only opens zip files on Windows.
+- Secure connections (rustls) move to 0.23.46, which fixes three reported flaws.
+- The app framework moves from Tauri 2.10 to 2.12. The custom fix Vaporly
+  carried for where windows sit on macOS is now part of Tauri itself.
+- zod moves to 4.6.7. The app's code doesn't use it.
+
 ## 3.0.1 (2026-07-28)
 
 An accuracy release. Dictations now come back complete, in one clean block,
