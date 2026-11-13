@@ -6,7 +6,7 @@
 
 **Speak. It types.**
 
-Free forever. 100% private. Everything runs on your own computer.
+Free and open source (AGPL-3.0). Private by design. Speech and cleanup run on your own computer.
 
 <p>
 <a href="#download"><img src="docs/assets/btn-download.svg" alt="Download Vaporly" /></a>
@@ -23,7 +23,7 @@ Free forever. 100% private. Everything runs on your own computer.
 <a href="https://paypal.me/pohsuchenwork"><img src="docs/assets/btn-paypal.svg" alt="Donate with PayPal" /></a>
 </p>
 
-Vaporly is free and always will be. If it saves you typing, a coffee keeps it going.
+Vaporly is free and open source. If it saves you typing, a coffee keeps it going.
 
 </div>
 
@@ -31,7 +31,7 @@ Vaporly is free and always will be. If it saves you typing, a coffee keeps it go
 
 ## What Is Vaporly?
 
-Hold a key, talk, let go: your words appear as clean, polished text in whatever app you are using. No cloud, no account, no subscription. Unlike online dictation services, **your voice never leaves your computer**: the speech recognition and the AI tidy-up both run right on your machine.
+Hold a key, talk, let go: your words appear as clean, polished text in whatever app you are using. No cloud, no account, no subscription. Unlike online dictation services, **in this version, your voice stays on your computer**: the speech recognition and the AI tidy-up both run right on your machine.
 
 ## What Vaporly Can Do
 
