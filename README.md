@@ -127,7 +127,7 @@ Vaporly is built to keep your voice and your words on your own machine.
 
 - Speech recognition and the optional AI cleanup both run locally. The cleanup engine listens only on your own computer (`127.0.0.1`) behind a fresh per-session key.
 - The only things that ever reach the internet are checking for app updates and downloading the speech and cleanup models the first time. There is no telemetry, no analytics, and no account.
-- Updates are cryptographically signed, and the app respects secure input fields (it will not type into password boxes).
+- Updates are cryptographically signed, and the app respects secure input fields (on a Mac, the live on-textbox preview falls back to a plain bar in password boxes).
 
 Full details, including the threat model and exactly what does and does not leave your machine: [Security](.github/SECURITY.md).
 
