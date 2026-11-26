@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'sha256-Y1BWXpuuZ05ebAkq3eecPKnZtnwrtXJuSg4xr/6yRoo='; style-src 'sha256-axziGGC+RMg4QZf8rz/Kf8a4kbLLLp3MbcNaKBDFfck='; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+    />
     <title>Vaporly: free, private dictation that runs on your computer</title>
     <meta
       name="description"
@@ -364,11 +368,14 @@
         font-size: 12.5px;
         margin-top: 12px;
       }
+      /* Were inline style attributes; moved here so the content policy needs no 'unsafe-inline'. */
+      .sprite { position: absolute; }
+      .ic.ic-gh { width: 15px; height: 15px; vertical-align: -2px; }
     </style>
   </head>
   <body>
     <!-- icon set: Simple Icons (CC0) brand marks, Lucide (ISC) UI icons; inlined, no network -->
-    <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <svg width="0" height="0" class="sprite" aria-hidden="true">
       <symbol id="i-apple" viewBox="0 0 24 24">
         <path
           fill="currentColor"
@@ -793,8 +800,7 @@
         <div class="links">
           <a href="https://github.com/pohsuchenwork/vaporly"
             ><svg
-              class="ic"
-              style="width: 15px; height: 15px; vertical-align: -2px"
+              class="ic ic-gh"
             >
               <use href="#i-github" />
             </svg>
